@@ -6,7 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:exif/exif.dart';
-import 'package:archive/archive.dart'; // <--- НОВИЙ ІМПОРТ ДЛЯ ЧИТАННЯ DOCX
+import 'package:archive/archive.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
@@ -141,29 +141,54 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     await prefs.setStringList('audit_logs', auditLogs);
   }
 
+  // --- НОВИЙ ІНТЕРАКТИВНИЙ ДАШБОРД ---
   void _showSysInfo() {
     Map<String, int> stats = {'ФО': 0, 'ЮО': 0, 'ГЕОІНТ': 0, 'МОНІТОРИНГ': 0};
+    int total = prompts.length;
     for (var p in prompts) {
       if (stats.containsKey(p.category)) stats[p.category] = stats[p.category]! + 1;
     }
 
     showDialog(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: const Color(0xFF040E22),
-      shape: RoundedRectangleBorder(side: BorderSide(color: uaYellow)),
-      title: const Text('SYS.INFO', style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold)),
-      content: Column(
-        mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+      shape: RoundedRectangleBorder(side: BorderSide(color: uaBlue), borderRadius: BorderRadius.circular(16)),
+      title: Row(
         children: [
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('ЗАГАЛОМ ЗАПИСІВ:', style: TextStyle(color: Colors.white70, fontSize: 13)), Text('${prompts.length}', style: TextStyle(color: uaYellow, fontWeight: FontWeight.bold))]),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('ДОКУМЕНТІВ:', style: TextStyle(color: Colors.white70, fontSize: 13)), Text('${docs.length}', style: TextStyle(color: uaYellow, fontWeight: FontWeight.bold))]),
-          const Divider(color: Colors.white24, height: 20),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('ФО:', style: TextStyle(color: Colors.white70)), Text('${stats['ФО']}', style: TextStyle(color: uaBlue, fontWeight: FontWeight.bold))]),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('ЮО:', style: TextStyle(color: Colors.white70)), Text('${stats['ЮО']}', style: TextStyle(color: uaBlue, fontWeight: FontWeight.bold))]),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('ГЕОІНТ:', style: TextStyle(color: Colors.white70)), Text('${stats['ГЕОІНТ']}', style: TextStyle(color: uaBlue, fontWeight: FontWeight.bold))]),
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('МОНІТОРИНГ:', style: TextStyle(color: Colors.white70)), Text('${stats['МОНІТОРИНГ']}', style: TextStyle(color: uaBlue, fontWeight: FontWeight.bold))]),
+          Icon(Icons.dashboard, color: uaYellow), const SizedBox(width: 10),
+          const Text('КІБЕР-ДАШБОРД', style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold, fontSize: 16)),
         ],
       ),
-      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text('OK', style: TextStyle(color: uaYellow)))],
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('УСЬОГО ПРОМПТІВ:', style: TextStyle(color: Colors.white70, fontSize: 12)), Text('$total', style: TextStyle(color: uaYellow, fontWeight: FontWeight.bold, fontSize: 18))]),
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('ДОКУМЕНТІВ В АРХІВІ:', style: TextStyle(color: Colors.white70, fontSize: 12)), Text('${docs.length}', style: TextStyle(color: uaYellow, fontWeight: FontWeight.bold, fontSize: 18))]),
+            const SizedBox(height: 20),
+            const Text('СТРУКТУРА БАЗИ:', style: TextStyle(color: Colors.white54, fontSize: 10, letterSpacing: 1.5)),
+            const SizedBox(height: 10),
+            ...stats.entries.map((e) {
+              double percent = total == 0 ? 0 : e.value / total;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                      Text(e.key, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                      Text('${e.value}', style: const TextStyle(color: Colors.greenAccent, fontFamily: 'monospace')),
+                    ]),
+                    const SizedBox(height: 4),
+                    LinearProgressIndicator(value: percent, backgroundColor: Colors.white10, color: uaBlue, minHeight: 6, borderRadius: BorderRadius.circular(3)),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('ЗАКРИТИ', style: TextStyle(color: Colors.white54)))],
     ));
   }
   
@@ -369,18 +394,226 @@ class ToolsMenuScreen extends StatelessWidget {
   Widget build(BuildContext context) => ListView(
     padding: const EdgeInsets.only(top: 10, bottom: 20),
     children: [
-      _t(context, 'ВАРІАНТИ НІКНЕЙМУ', 'Офлайн генерація логінів/пошт', Icons.psychology, NicknameGenScreen(onLog: onLog)),
-      _t(context, 'DORKS', 'Кібер-конструктор Google запитів', Icons.travel_explore, DorksScreen(onLog: onLog)),
-      _t(context, 'МЕНЕДЖЕР ПАРОЛІВ', 'Захищений крипто-блокнот', Icons.lock_outline, PasswordManagerScreen(onLog: onLog)),
-      _t(context, 'СКАНЕР', 'Екстракція об\'єктів з тексту або DOC/TXT', Icons.radar, ScannerScreen(onLog: onLog)),
+      _t(context, 'ВАРІАНТИ НІКНЕЙМУ', 'Офлайн генерація логінів', Icons.psychology, NicknameGenScreen(onLog: onLog)),
+      _t(context, 'DORKS', 'Кібер-конструктор запитів', Icons.travel_explore, DorksScreen(onLog: onLog)),
+      _t(context, 'СКАНЕР', 'Екстракція об\'єктів з тексту/DOC', Icons.radar, ScannerScreen(onLog: onLog)),
       _t(context, 'EXIF', 'Аналіз метаданих фотографії', Icons.image_search, ExifScreen(onLog: onLog)),
+      _t(context, 'МЕНЕДЖЕР ПАРОЛІВ', 'Захищений крипто-блокнот', Icons.lock_outline, PasswordManagerScreen(onLog: onLog)),
       _t(context, 'ТАЙМЛАЙН', 'Хронологія розслідування', Icons.timeline, TimelineScreen(onLog: onLog)),
+      // НОВІ ІНСТРУМЕНТИ
+      _t(context, 'ДЕШИФРАТОР ІПН', 'Аналіз податкового номера', Icons.fingerprint, IpnDecoderScreen(onLog: onLog)),
+      _t(context, 'ФІНАНСОВИЙ ВАЛІДАТОР', 'Перевірка карток та IBAN', Icons.credit_card, FinValidatorScreen(onLog: onLog)),
+      _t(context, 'АВТОМОБІЛЬНИЙ МОДУЛЬ', 'Регіони номерних знаків', Icons.directions_car, AutoModuleScreen(onLog: onLog)),
     ]
   );
   
   Widget _t(ctx, t, s, i, scr) => Card(
-    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), color: Colors.white.withOpacity(0.03),
-    child: ListTile(leading: Icon(i, color: const Color(0xFFFFD700)), title: Text(t, style: const TextStyle(fontWeight: FontWeight.bold)), subtitle: Text(s), onTap: () => Navigator.push(ctx, MaterialPageRoute(builder: (_) => scr)))
+    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6), color: Colors.white.withOpacity(0.03),
+    child: ListTile(leading: Icon(i, color: const Color(0xFFFFD700)), title: Text(t, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), subtitle: Text(s, style: const TextStyle(fontSize: 11)), onTap: () => Navigator.push(ctx, MaterialPageRoute(builder: (_) => scr)))
+  );
+}
+
+// --- НОВЕ: ДЕШИФРАТОР ІПН (РНОКПП) ---
+class IpnDecoderScreen extends StatefulWidget {
+  final Function(String) onLog;
+  const IpnDecoderScreen({super.key, required this.onLog});
+  @override
+  State<IpnDecoderScreen> createState() => _IpnDecoderScreenState();
+}
+
+class _IpnDecoderScreenState extends State<IpnDecoderScreen> {
+  final _c = TextEditingController();
+  Map<String, String>? _res;
+
+  void _decode() {
+    String ipn = _c.text.trim();
+    if (ipn.length != 10 || int.tryParse(ipn) == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('ІПН має містити рівно 10 цифр')));
+      return;
+    }
+    
+    try {
+      int days = int.parse(ipn.substring(0, 5));
+      DateTime dob = DateTime(1899, 12, 31).add(Duration(days: days));
+      
+      int genderDigit = int.parse(ipn[8]);
+      String gender = genderDigit % 2 == 0 ? 'Жіноча' : 'Чоловіча';
+      
+      int age = DateTime.now().year - dob.year;
+      if (DateTime.now().month < dob.month || (DateTime.now().month == dob.month && DateTime.now().day < dob.day)) age--;
+
+      setState(() {
+        _res = {
+          'Дата народження': "${dob.day.toString().padLeft(2, '0')}.${dob.month.toString().padLeft(2, '0')}.${dob.year}",
+          'Повний вік': "$age років",
+          'Стать': gender,
+        };
+      });
+      widget.onLog("ІПН Дешифратор: Аналіз успішний");
+      FocusScope.of(context).unfocus();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Помилка алгоритму або неіснуючий ІПН')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('ДЕШИФРАТОР ІПН')),
+    body: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
+      TextField(controller: _c, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Введіть 10 цифр РНОКПП')),
+      const SizedBox(height: 10),
+      ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7), minimumSize: const Size(double.infinity, 50)), onPressed: _decode, child: const Text('АНАЛІЗУВАТИ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+      const SizedBox(height: 20),
+      if (_res != null) Expanded(child: ListView(
+        children: _res!.entries.map((e) => Card(color: Colors.white.withOpacity(0.05), child: ListTile(title: Text(e.key, style: const TextStyle(fontSize: 12, color: Colors.white54)), subtitle: Text(e.value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.greenAccent))))).toList(),
+      ))
+    ])),
+  );
+}
+
+// --- НОВЕ: ФІНАНСОВИЙ ВАЛІДАТОР ---
+class FinValidatorScreen extends StatefulWidget {
+  final Function(String) onLog;
+  const FinValidatorScreen({super.key, required this.onLog});
+  @override
+  State<FinValidatorScreen> createState() => _FinValidatorScreenState();
+}
+
+class _FinValidatorScreenState extends State<FinValidatorScreen> {
+  final _c = TextEditingController();
+  Map<String, String>? _res;
+
+  bool _luhnCheck(String cc) {
+    int sum = 0; bool alt = false;
+    for (int i = cc.length - 1; i >= 0; i--) {
+      int n = int.parse(cc[i]);
+      if (alt) { n *= 2; if (n > 9) n -= 9; }
+      sum += n; alt = !alt;
+    }
+    return sum % 10 == 0;
+  }
+
+  void _validate() {
+    String input = _c.text.replaceAll(' ', '').trim();
+    if (input.isEmpty) return;
+
+    Map<String, String> info = {};
+    if (input.startsWith('UA') && input.length == 29) {
+      info['Тип'] = 'IBAN (Україна)';
+      info['Статус'] = 'Коректна довжина формату';
+      info['Код банку (МФО)'] = input.substring(4, 10);
+    } else if (RegExp(r'^\d+$').hasMatch(input)) {
+      if (input.length >= 13 && input.length <= 19) {
+        bool isValid = _luhnCheck(input);
+        info['Тип'] = 'Банківська картка';
+        info['Валідність (Алгоритм Луна)'] = isValid ? 'ДІЙСНА' : 'НЕ ВАЛІДНА';
+        if (input.startsWith('4')) info['Платіжна система'] = 'Visa';
+        else if (input.startsWith('5')) info['Платіжна система'] = 'Mastercard';
+        else info['Платіжна система'] = 'Інша / Невідома';
+      } else {
+        info['Статус'] = 'Невідомий формат цифр';
+      }
+    } else {
+      info['Помилка'] = 'Некоректний ввід';
+    }
+
+    setState(() => _res = info);
+    widget.onLog("Фінанси: Валідація даних");
+    FocusScope.of(context).unfocus();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('ФІНАНСОВИЙ ВАЛІДАТОР')),
+    body: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
+      TextField(controller: _c, decoration: const InputDecoration(labelText: 'Введіть номер картки або IBAN')),
+      const SizedBox(height: 10),
+      ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7), minimumSize: const Size(double.infinity, 50)), onPressed: _validate, child: const Text('ПЕРЕВІРИТИ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+      const SizedBox(height: 20),
+      if (_res != null) Expanded(child: ListView(
+        children: _res!.entries.map((e) => Card(color: Colors.white.withOpacity(0.05), child: ListTile(title: Text(e.key, style: const TextStyle(fontSize: 12, color: Colors.white54)), subtitle: Text(e.value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: e.value == 'НЕ ВАЛІДНА' ? Colors.redAccent : Colors.greenAccent))))).toList(),
+      ))
+    ])),
+  );
+}
+
+// --- НОВЕ: АВТОМОБІЛЬНИЙ МОДУЛЬ ---
+class AutoModuleScreen extends StatefulWidget {
+  final Function(String) onLog;
+  const AutoModuleScreen({super.key, required this.onLog});
+  @override
+  State<AutoModuleScreen> createState() => _AutoModuleScreenState();
+}
+
+class _AutoModuleScreenState extends State<AutoModuleScreen> {
+  final _c = TextEditingController();
+  Map<String, String>? _res;
+
+  final Map<String, String> _regions = {
+    'AA': 'м. Київ', 'KA': 'м. Київ', 'TT': 'м. Київ', 'TA': 'м. Київ',
+    'AB': 'Вінницька обл.', 'KB': 'Вінницька обл.', 'MM': 'Вінницька обл.', 'OK': 'Вінницька обл.',
+    'AC': 'Волинська обл.', 'KC': 'Волинська обл.', 'SM': 'Волинська обл.', 'TC': 'Волинська обл.',
+    'AE': 'Дніпропетровська обл.', 'KE': 'Дніпропетровська обл.', 'PP': 'Дніпропетровська обл.', 'MI': 'Дніпропетровська обл.',
+    'AH': 'Донецька обл.', 'KH': 'Донецька обл.', 'TH': 'Донецька обл.', 'MH': 'Донецька обл.',
+    'AM': 'Житомирська обл.', 'KM': 'Житомирська обл.', 'TM': 'Житомирська обл.', 'MB': 'Житомирська обл.',
+    'AO': 'Закарпатська обл.', 'KO': 'Закарпатська обл.', 'MT': 'Закарпатська обл.', 'MO': 'Закарпатська обл.',
+    'AP': 'Запорізька обл.', 'KP': 'Запорізька обл.', 'TP': 'Запорізька обл.', 'MP': 'Запорізька обл.',
+    'AT': 'Івано-Франківська обл.', 'KT': 'Івано-Франківська обл.', 'TO': 'Івано-Франківська обл.', 'XC': 'Івано-Франківська обл.',
+    'AI': 'Київська обл.', 'KI': 'Київська обл.', 'TI': 'Київська обл.', 'ME': 'Київська обл.',
+    'BA': 'Кіровоградська обл.', 'HA': 'Кіровоградська обл.', 'EA': 'Кіровоградська обл.', 'XA': 'Кіровоградська обл.',
+    'BB': 'Луганська обл.', 'HB': 'Луганська обл.', 'EE': 'Луганська обл.', 'EB': 'Луганська обл.',
+    'BC': 'Львівська обл.', 'HC': 'Львівська обл.', 'CC': 'Львівська обл.', 'EX': 'Львівська обл.',
+    'BE': 'Миколаївська обл.', 'HE': 'Миколаївська обл.', 'XE': 'Миколаївська обл.', 'XH': 'Миколаївська обл.',
+    'BH': 'Одеська обл.', 'HH': 'Одеська обл.', 'OO': 'Одеська обл.', 'EH': 'Одеська обл.',
+    'BI': 'Полтавська обл.', 'HI': 'Полтавська обл.', 'EI': 'Полтавська обл.', 'XI': 'Полтавська обл.',
+    'BK': 'Рівненська обл.', 'HK': 'Рівненська обл.', 'EK': 'Рівненська обл.', 'XK': 'Рівненська обл.',
+    'BM': 'Сумська обл.', 'HM': 'Сумська обл.', 'EM': 'Сумська обл.', 'XM': 'Сумська обл.',
+    'BO': 'Тернопільська обл.', 'HO': 'Тернопільська обл.', 'EO': 'Тернопільська обл.', 'XO': 'Тернопільська обл.',
+    'AX': 'Харківська обл.', 'KX': 'Харківська обл.', 'XX': 'Харківська обл.', 'EX': 'Харківська обл.',
+    'BT': 'Херсонська обл.', 'HT': 'Херсонська обл.', 'ET': 'Херсонська обл.', 'XT': 'Херсонська обл.',
+    'BX': 'Хмельницька обл.', 'HX': 'Хмельницька обл.', 'OX': 'Хмельницька обл.', 'PX': 'Хмельницька обл.',
+    'CA': 'Черкаська обл.', 'IA': 'Черкаська обл.', 'OA': 'Черкаська обл.', 'PA': 'Черкаська обл.',
+    'CB': 'Чернігівська обл.', 'IB': 'Чернігівська обл.', 'OB': 'Чернігівська обл.', 'PB': 'Чернігівська обл.',
+    'CE': 'Чернівецька обл.', 'IE': 'Чернівецька обл.', 'OE': 'Чернівецька обл.', 'PE': 'Чернівецька обл.',
+    'AK': 'АР Крим', 'KK': 'АР Крим', 'TK': 'АР Крим', 'MK': 'АР Крим',
+    'CH': 'м. Севастополь', 'IH': 'м. Севастополь', 'OH': 'м. Севастополь', 'PH': 'м. Севастополь',
+  };
+
+  void _analyze() {
+    String input = _c.text.trim().toUpperCase().replaceAll(' ', '');
+    if (input.isEmpty) return;
+
+    Map<String, String> info = {};
+    
+    if (input.length == 17 && RegExp(r'^[A-HJ-NPR-Z0-9]+$').hasMatch(input)) {
+      info['Тип'] = 'VIN Код';
+      info['Статус'] = 'Формат валідний';
+      info['Регіон виробника (WMI)'] = input.substring(0, 3);
+    } else if (input.length >= 8 && RegExp(r'^[A-Z]{2}\d{4}[A-Z]{2}$').hasMatch(input)) {
+      String regCode = input.substring(0, 2);
+      info['Тип'] = 'Автомобільний номер (Україна)';
+      info['Регіон'] = _regions[regCode] ?? 'Невідомий код регіону';
+    } else {
+      info['Помилка'] = 'Невідомий формат. Введіть номер (АА1234ВВ) або 17 символів VIN.';
+    }
+
+    setState(() => _res = info);
+    widget.onLog("Авто Модуль: Аналіз $input");
+    FocusScope.of(context).unfocus();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('АВТОМОБІЛЬНИЙ МОДУЛЬ')),
+    body: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
+      TextField(controller: _c, textCapitalization: TextCapitalization.characters, decoration: const InputDecoration(labelText: 'Номер авто (АА1234ВВ) або VIN')),
+      const SizedBox(height: 10),
+      ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7), minimumSize: const Size(double.infinity, 50)), onPressed: _analyze, child: const Text('ПРОБИТИ БАЗУ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+      const SizedBox(height: 20),
+      if (_res != null) Expanded(child: ListView(
+        children: _res!.entries.map((e) => Card(color: Colors.white.withOpacity(0.05), child: ListTile(title: Text(e.key, style: const TextStyle(fontSize: 12, color: Colors.white54)), subtitle: Text(e.value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.greenAccent))))).toList(),
+      ))
+    ])),
   );
 }
 
@@ -611,7 +844,7 @@ class _NicknameGenScreenState extends State<NicknameGenScreen> {
   );
 }
 
-// --- DORKS SCREEN (РОЗШИРЕНИЙ) ---
+// --- DORKS SCREEN ---
 class DorksScreen extends StatefulWidget {
   final Function(String) onLog;
   final String? initialQuery;
@@ -716,7 +949,7 @@ class _DorksScreenState extends State<DorksScreen> {
   }
 }
 
-// --- СКАНЕР (З ІМПОРТОМ DOCX ТА ПЕРЕХРЕСНИМ МЕНЮ) ---
+// --- СКАНЕР ---
 class ScannerScreen extends StatefulWidget {
   final Function(String) onLog;
   const ScannerScreen({super.key, required this.onLog});
@@ -730,10 +963,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   void _loadTxt() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom, 
-      allowedExtensions: ['txt', 'doc', 'docx', 'csv', 'log']
+      type: FileType.custom, allowedExtensions: ['txt', 'doc', 'docx', 'csv', 'log']
     );
-    
     if (result != null && result.files.single.path != null) {
       try {
         final file = File(result.files.single.path!);
@@ -743,18 +974,16 @@ class _ScannerScreenState extends State<ScannerScreen> {
         if (ext == 'txt' || ext == 'csv' || ext == 'log') {
           content = await file.readAsString();
         } else if (ext == 'docx') {
-          // РЕАЛЬНИЙ ХАК DOCX (Пакет Archive)
           final bytes = await file.readAsBytes();
           final archive = ZipDecoder().decodeBytes(bytes);
           for (final archiveFile in archive) {
             if (archiveFile.name == 'word/document.xml') {
               final xmlContent = utf8.decode(archiveFile.content as List<int>);
-              content = xmlContent.replaceAll(RegExp(r'<[^>]*>'), ' '); // Чистимо XML теги
+              content = xmlContent.replaceAll(RegExp(r'<[^>]*>'), ' ');
               break;
             }
           }
         } else {
-          // Хак для старих .doc або pdf (бінарне читання тексту)
           final bytes = await file.readAsBytes();
           final chars = bytes.where((b) => (b >= 32 && b <= 126) || b == 10 || b == 13).toList();
           content = String.fromCharCodes(chars);
@@ -787,8 +1016,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
   void _showCrossActions(String rawVal) {
     String val = rawVal.split(': ').last.trim();
     showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF0A152F),
+      context: context, backgroundColor: const Color(0xFF0A152F),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => Wrap(
         children: [
@@ -819,10 +1047,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
         color: Colors.white.withOpacity(0.05), margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         child: ListTile(
           title: Text(_r[i], style: const TextStyle(fontFamily: 'monospace', color: Colors.greenAccent)),
-          onTap: () {
-            Clipboard.setData(ClipboardData(text: _r[i].split(': ').last.trim()));
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Скопійовано')));
-          },
+          onTap: () { Clipboard.setData(ClipboardData(text: _r[i].split(': ').last.trim())); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Скопійовано'))); },
           trailing: IconButton(icon: const Icon(Icons.more_vert, color: Colors.white54), onPressed: () => _showCrossActions(_r[i])),
         )
       )))
@@ -845,25 +1070,17 @@ class _ExifScreenState extends State<ExifScreen> {
 
   void _pick() async {
     setState(() { _isLoading = true; _error = ''; _data.clear(); });
-
     try {
       FilePickerResult? r = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
       if (r != null) {
         final bytes = r.files.single.bytes ?? await File(r.files.single.path!).readAsBytes();
         final tags = await readExifFromBytes(bytes);
-
-        if (tags.isEmpty) {
-          _error = 'Метадані відсутні (можливо, були видалені месенджером або соцмережею)';
-        } else {
-          _data = tags;
-        }
+        if (tags.isEmpty) { _error = 'Метадані відсутні'; } else { _data = tags; }
         widget.onLog("EXIF: Аналіз файлу ${r.files.single.name}");
       }
     } catch (e) {
-      _error = 'Помилка доступу до файлу. Спробуйте інше фото.';
-      widget.onLog("ERR: Помилка EXIF");
+      _error = 'Помилка доступу до файлу.'; widget.onLog("ERR: Помилка EXIF");
     }
-
     setState(() => _isLoading = false);
   }
 
@@ -893,10 +1110,7 @@ class _ExifScreenState extends State<ExifScreen> {
                   child: ListTile(
                     title: Text(key, style: const TextStyle(fontSize: 12, color: Colors.white70)),
                     subtitle: Text(value, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.greenAccent)),
-                    onTap: () {
-                      Clipboard.setData(ClipboardData(text: "$key: $value"));
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Дані скопійовано')));
-                    },
+                    onTap: () { Clipboard.setData(ClipboardData(text: "$key: $value")); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Дані скопійовано'))); },
                   ),
                 );
               },
@@ -920,41 +1134,27 @@ class _TimelineScreenState extends State<TimelineScreen> {
   List<Map<String, dynamic>> _events = [];
 
   @override
-  void initState() {
-    super.initState();
-    _loadEvents();
-  }
-
+  void initState() { super.initState(); _loadEvents(); }
   void _loadEvents() async {
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getString('timeline_data');
-    if (data != null) {
-      setState(() => _events = List<Map<String, dynamic>>.from(json.decode(data)));
-    }
+    if (data != null) { setState(() => _events = List<Map<String, dynamic>>.from(json.decode(data))); }
   }
-
   void _saveEvents() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('timeline_data', json.encode(_events));
+    final prefs = await SharedPreferences.getInstance(); await prefs.setString('timeline_data', json.encode(_events));
   }
-
   void _addEvent() {
     final dC = TextEditingController(), tC = TextEditingController();
     showDialog(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: const Color(0xFF0A152F), title: const Text('НОВА ПОДІЯ'),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
         TextField(controller: dC, decoration: const InputDecoration(labelText: 'Дата / Час (напр. 24.02.2026)')),
-        const SizedBox(height: 10),
-        TextField(controller: tC, decoration: const InputDecoration(labelText: 'Подія / Опис')),
+        const SizedBox(height: 10), TextField(controller: tC, decoration: const InputDecoration(labelText: 'Подія / Опис')),
       ]),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('СКАСУВАТИ')),
         ElevatedButton(onPressed: () {
-          if (dC.text.isNotEmpty && tC.text.isNotEmpty) {
-            setState(() => _events.add({'date': dC.text, 'title': tC.text}));
-            _saveEvents();
-            widget.onLog("Таймлайн: додано подію");
-          }
+          if (dC.text.isNotEmpty && tC.text.isNotEmpty) { setState(() => _events.add({'date': dC.text, 'title': tC.text})); _saveEvents(); widget.onLog("Таймлайн: додано подію"); }
           Navigator.pop(ctx);
         }, child: const Text('ДОДАТИ'))
       ],
@@ -968,23 +1168,14 @@ class _TimelineScreenState extends State<TimelineScreen> {
       body: _events.isEmpty 
         ? const Center(child: Text('Таймлайн порожній', style: TextStyle(color: Colors.white54)))
         : ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: _events.length,
+            padding: const EdgeInsets.all(16), itemCount: _events.length,
             itemBuilder: (ctx, i) {
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Column(children: [
-                    Container(width: 12, height: 12, decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFFFD700))),
-                    if (i != _events.length - 1) Container(width: 2, height: 60, color: Colors.white24),
-                  ]),
+                  Column(children: [ Container(width: 12, height: 12, decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFFFD700))), if (i != _events.length - 1) Container(width: 2, height: 60, color: Colors.white24), ]),
                   const SizedBox(width: 16),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(_events[i]['date'], style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0057B7))),
-                    const SizedBox(height: 4),
-                    Text(_events[i]['title'], style: const TextStyle(color: Colors.white)),
-                    const SizedBox(height: 20),
-                  ]))
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [ Text(_events[i]['date'], style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0057B7))), const SizedBox(height: 4), Text(_events[i]['title'], style: const TextStyle(color: Colors.white)), const SizedBox(height: 20), ]))
                 ],
               );
             },
@@ -994,7 +1185,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
   }
 }
 
-// --- GEN SCREEN З ТУРБО-АНІМАЦІЄЮ ТА КОЛЬОРОВИМ КОДОМ ---
+// --- GEN SCREEN ---
 class GenScreen extends StatefulWidget {
   final Prompt p;
   final Function(String) onLog;
@@ -1006,7 +1197,6 @@ class GenScreen extends StatefulWidget {
 class _GenScreenState extends State<GenScreen> {
   final Map<String, TextEditingController> _ctrls = {};
   bool _isCompiled = false;
-  
   List<TextSpan> _fullSpans = [];
   int _totalChars = 0;
   int _currentChar = 0;
@@ -1029,16 +1219,10 @@ class _GenScreenState extends State<GenScreen> {
   }
 
   @override
-  void dispose() {
-    _typeTimer?.cancel();
-    super.dispose();
-  }
+  void dispose() { _typeTimer?.cancel(); super.dispose(); }
 
   void _compileAndType() {
-    _fullSpans.clear();
-    _totalChars = 0;
-    _currentChar = 0;
-
+    _fullSpans.clear(); _totalChars = 0; _currentChar = 0;
     String template = widget.p.content;
     int lastIndex = 0;
     final reg = RegExp(r'\{([^}]+)\}');
@@ -1069,7 +1253,6 @@ class _GenScreenState extends State<GenScreen> {
       String hdr = "\n\n### СИСТЕМНІ ІНСТРУКЦІЇ:\n";
       _fullSpans.add(TextSpan(text: hdr, style: const TextStyle(color: Colors.yellow, fontWeight: FontWeight.bold)));
       _totalChars += hdr.length;
-      
       for (var e in selected) {
         String t = "- ${e.payload}\n";
         _fullSpans.add(TextSpan(text: t, style: const TextStyle(color: Colors.yellow)));
@@ -1081,15 +1264,11 @@ class _GenScreenState extends State<GenScreen> {
     widget.onLog("Компіляція: ${widget.p.title}");
     FocusScope.of(context).unfocus();
 
-    // Швидкість X5
     _typeTimer?.cancel();
     _typeTimer = Timer.periodic(const Duration(milliseconds: 2), (t) {
       setState(() {
         _currentChar += 5;
-        if (_currentChar >= _totalChars) {
-          _currentChar = _totalChars;
-          t.cancel();
-        }
+        if (_currentChar >= _totalChars) { _currentChar = _totalChars; t.cancel(); }
       });
     });
   }
@@ -1099,10 +1278,8 @@ class _GenScreenState extends State<GenScreen> {
     int current = 0;
     for (var span in _fullSpans) {
       String text = span.text ?? '';
-      if (current + text.length <= _currentChar) {
-        result.add(span);
-        current += text.length;
-      } else {
+      if (current + text.length <= _currentChar) { result.add(span); current += text.length; } 
+      else {
         int remaining = _currentChar - current;
         if (remaining > 0) result.add(TextSpan(text: text.substring(0, remaining), style: span.style));
         break;
@@ -1120,8 +1297,7 @@ class _GenScreenState extends State<GenScreen> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setModalState) => Container(
-          padding: const EdgeInsets.only(top: 20, left: 16, right: 16, bottom: 40),
-          height: MediaQuery.of(context).size.height * 0.75,
+          padding: const EdgeInsets.only(top: 20, left: 16, right: 16, bottom: 40), height: MediaQuery.of(context).size.height * 0.75,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1137,10 +1313,7 @@ class _GenScreenState extends State<GenScreen> {
                       child: CheckboxListTile(
                         activeColor: const Color(0xFF0057B7), checkColor: Colors.white,
                         title: Text(e.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(e.desc, style: const TextStyle(fontSize: 12)),
-                          Text('КРАЩЕ ДЛЯ: ${e.bestWith}', style: const TextStyle(fontSize: 10, color: Colors.greenAccent)),
-                        ]),
+                        subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [ Text(e.desc, style: const TextStyle(fontSize: 12)), Text('КРАЩЕ ДЛЯ: ${e.bestWith}', style: const TextStyle(fontSize: 10, color: Colors.greenAccent)), ]),
                         value: e.isSelected,
                         onChanged: (val) { setModalState(() => e.isSelected = val!); if (_isCompiled) _compileAndType(); },
                       ),
@@ -1168,10 +1341,7 @@ class _GenScreenState extends State<GenScreen> {
         if (!_isCompiled) ...[
           ..._ctrls.keys.map((k) => Padding(padding: const EdgeInsets.only(bottom: 8.0), child: TextField(controller: _ctrls[k], decoration: InputDecoration(labelText: k)))),
           const SizedBox(height: 10),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7), minimumSize: const Size(double.infinity, 50)),
-            onPressed: _compileAndType, child: const Text('КОМПІЛЮВАТИ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
-          ),
+          ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7), minimumSize: const Size(double.infinity, 50)), onPressed: _compileAndType, child: const Text('КОМПІЛЮВАТИ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
         ] else ...[
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0A152F), side: const BorderSide(color: Color(0xFFFFD700)), minimumSize: const Size(double.infinity, 50)),
@@ -1181,9 +1351,7 @@ class _GenScreenState extends State<GenScreen> {
           Expanded(child: Container(
             width: double.infinity, padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(8), border: Border.all(color: _enhancers.any((e) => e.isSelected) ? const Color(0xFF0057B7) : Colors.transparent)),
-            child: SingleChildScrollView(
-              child: SelectableText.rich(TextSpan(children: _getVisibleSpans()), style: const TextStyle(fontFamily: 'monospace'))
-            )
+            child: SingleChildScrollView(child: SelectableText.rich(TextSpan(children: _getVisibleSpans()), style: const TextStyle(fontFamily: 'monospace')))
           )),
           const SizedBox(height: 10),
           Row(children: [
