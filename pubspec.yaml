@@ -1,5 +1,5 @@
 name: prompt_library
-description: OSINT АРХІВ. Спеціальний інструментарій для збору та аналізу даних.
+description: OSINT АРХІВ. Спеціальний інструментарій.
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -17,7 +17,6 @@ dependencies:
   exif: ^3.1.4
   intl: ^0.19.0
   permission_handler: ^11.3.1
-  url_launcher: ^6.3.0 # Для відкриття дорків у браузері
 
 dev_dependencies:
   flutter_test:
