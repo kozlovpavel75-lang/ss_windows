@@ -6,7 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:exif/exif.dart';
-import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
@@ -15,12 +15,9 @@ import 'dart:math';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(statusBarColor: Colors.transparent));
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(statusBarColor: Colors.transparent));
   runApp(const PromptApp());
 }
-
-// --- МОДЕЛІ ДАНИХ ---
 
 class Prompt {
   String id, title, content, category;
@@ -37,8 +34,6 @@ class PDFDoc {
   factory PDFDoc.fromJson(Map<String, dynamic> json) => PDFDoc(id: json['id'], name: json['name'], path: json['path']);
 }
 
-// --- ГОЛОВНИЙ ВХІД ---
-
 class PromptApp extends StatelessWidget {
   const PromptApp({super.key});
   @override
@@ -49,18 +44,15 @@ class PromptApp extends StatelessWidget {
         brightness: Brightness.dark,
         scaffoldBackgroundColor: const Color(0xFF040E22),
         appBarTheme: const AppBarTheme(backgroundColor: Colors.transparent, elevation: 0),
-        tabBarTheme: const TabBarTheme(
-          labelColor: Color(0xFFFFD700),
-          unselectedLabelColor: Colors.white54,
-          indicator: UnderlineTabIndicator(borderSide: BorderSide(color: Color(0xFFFFD700), width: 2)),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true, fillColor: const Color(0xFF0A152F),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
         ),
       ),
       home: const SplashScreen(),
     );
   }
 }
-
-// --- ЕКРАН ЗАСТАВКИ (SPLASH SCREEN) ---
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -73,40 +65,12 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
     Timer(const Duration(milliseconds: 1800), () {
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          PageRouteBuilder(
-            pageBuilder: (context, animation, secondaryAnimation) => const MainScreen(),
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              return FadeTransition(opacity: animation, child: child);
-            },
-            transitionDuration: const Duration(milliseconds: 800),
-          ),
-        );
-      }
+      if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainScreen()));
     });
   }
-
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          image: DecorationImage(
-            image: AssetImage('assets/splash.png'),
-            fit: BoxFit.cover,
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => Scaffold(backgroundColor: Colors.black, body: Image.asset('assets/splash.png', fit: BoxFit.cover, width: double.infinity, height: double.infinity));
 }
-
-// --- ГОЛОВНИЙ ЕКРАН ---
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -129,178 +93,79 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   void initState() {
     super.initState();
     _tabController = TabController(length: categories.length, vsync: this);
-    _tabController.addListener(() { if (mounted) setState(() {}); });
     _loadData();
   }
 
   void _logAction(String action) {
     final now = DateTime.now();
-    final timeStr = "${now.day.toString().padLeft(2,'0')}.${now.month.toString().padLeft(2,'0')} ${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}";
-    setState(() {
-      auditLogs.insert(0, "[$timeStr] $action");
-      if (auditLogs.length > 50) auditLogs.removeLast();
-    });
+    final timeStr = "${now.day.toString().padLeft(2,'0')}.${now.month.toString().padLeft(2,'0')} ${now.hour}:${now.minute}";
+    setState(() { auditLogs.insert(0, "[$timeStr] $action"); });
     _save();
   }
 
   void _loadData() async {
     final prefs = await SharedPreferences.getInstance();
-    final String? pStr = prefs.getString('prompts_data');
-    final String? dStr = prefs.getString('docs_data');
-    final List<String>? logs = prefs.getStringList('audit_logs');
+    final pStr = prefs.getString('prompts_data');
+    final dStr = prefs.getString('docs_data');
     setState(() {
       if (pStr != null) prompts = (json.decode(pStr) as List).map((i) => Prompt.fromJson(i)).toList();
       if (dStr != null) docs = (json.decode(dStr) as List).map((i) => PDFDoc.fromJson(i)).toList();
-      if (logs != null) auditLogs = logs;
-      if (prompts.isEmpty) {
-        prompts = [Prompt(id: '1', title: 'Базовий промпт ФО', category: 'ФО', isFavorite: true, content: 'Аналіз фізичної особи: {ПІБ}. Пріоритет: OSINT.')];
-        _logAction("Ініціалізація бази даних");
-      }
+      if (prompts.isEmpty) prompts = [Prompt(id: '1', title: 'Пошук ФО', category: 'ФО', content: 'Аналіз: {ПІБ}')];
     });
   }
 
   void _save() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('prompts_data', json.encode(prompts.map((p) => p.toJson()).toList()));
-    await prefs.setString('docs_data', json.encode(docs.map((d) => d.toJson()).toList()));
-    await prefs.setStringList('audit_logs', auditLogs);
+    prefs.setString('prompts_data', json.encode(prompts.map((p) => p.toJson()).toList()));
+    prefs.setString('docs_data', json.encode(docs.map((d) => d.toJson()).toList()));
+    prefs.setStringList('audit_logs', auditLogs);
   }
 
-  void _importFromTxt() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['txt']);
-    if (result != null && result.files.single.path != null) {
-      try {
-        String content = await File(result.files.single.path!).readAsString();
-        List<Prompt> imported = [];
-        for (var block in content.split('===')) {
-          if (block.trim().isEmpty) continue;
-          String cat = 'МОНІТОРИНГ', title = '', text = '';
-          bool isText = false;
-          for (var line in block.trim().split('\n')) {
-            String l = line.toLowerCase().trim();
-            if (l.startsWith('категорія:')) cat = l.replaceFirst('категорія:', '').trim().toUpperCase();
-            else if (l.startsWith('назва:')) title = line.replaceFirst(RegExp(r'Назва:', caseSensitive: false), '').trim();
-            else if (l.startsWith('текст:')) { text = line.replaceFirst(RegExp(r'Текст:', caseSensitive: false), '').trim(); isText = true; }
-            else if (isText) text += '\n$line';
-          }
-          if (title.isNotEmpty && text.isNotEmpty) imported.add(Prompt(id: "${DateTime.now().millisecondsSinceEpoch}_${imported.length}", title: title, content: text.trim(), category: cat));
-        }
-        setState(() => prompts.addAll(imported));
-        _logAction("SYS: Імпортовано ${imported.length} записів");
-        _save();
-      } catch (e) { _logAction("ERR: Помилка TXT"); }
-    }
-  }
-
-  void _addOrEditPrompt({Prompt? p}) {
-    final tCtrl = TextEditingController(text: p?.title ?? '');
-    final cCtrl = TextEditingController(text: p?.content ?? '');
-    String selectedCat = p?.category ?? 'ФО';
-
-    showDialog(context: context, builder: (ctx) => StatefulBuilder(
-      builder: (context, setDialogState) => AlertDialog(
-        backgroundColor: const Color(0xFF0A152F),
-        title: Text(p == null ? 'НОВИЙ ЗАПИС' : 'РЕДАГУВАННЯ'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          DropdownButtonFormField<String>(
-            value: ['ФО','ЮО','ГЕОІНТ','МОНІТОРИНГ'].contains(selectedCat) ? selectedCat : 'ФО',
-            items: ['ФО','ЮО','ГЕОІНТ','МОНІТОРИНГ'].map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-            onChanged: (val) => setDialogState(() => selectedCat = val!),
-            decoration: const InputDecoration(labelText: 'КАТЕГОРІЯ'),
-          ),
-          TextField(controller: tCtrl, decoration: const InputDecoration(labelText: 'НАЗВА')),
-          TextField(controller: cCtrl, maxLines: 4, decoration: const InputDecoration(labelText: 'КОНТЕНТ {VAR}')),
-        ]),
-        actions: [
-          if (p != null) TextButton(onPressed: () { setState(() => prompts.remove(p)); _save(); Navigator.pop(ctx); }, child: const Text('ВИДАЛИТИ', style: TextStyle(color: Colors.red))),
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('СКАСУВАТИ')),
-          ElevatedButton(onPressed: () {
-            setState(() {
-              if (p == null) prompts.add(Prompt(id: DateTime.now().toString(), title: tCtrl.text, content: cCtrl.text, category: selectedCat));
-              else { p.title = tCtrl.text; p.content = cCtrl.text; p.category = selectedCat; }
-            });
-            _save(); Navigator.pop(ctx);
-          }, child: const Text('ЗБЕРЕГТИ'))
-        ],
-      )
+  void _showSysInfo() {
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      backgroundColor: const Color(0xFF040E22),
+      title: const Text('SYS.INFO', style: TextStyle(fontFamily: 'monospace')),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        _iRow('ЗАПИСІВ:', prompts.length.toString()),
+        _iRow('ДОКУМЕНТІВ:', docs.length.toString()),
+      ]),
+      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
     ));
   }
+
+  Widget _iRow(String l, String v) => Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(l), Text(v, style: TextStyle(color: uaYellow))]);
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: const Text('UKR_OSINT', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2)),
+        title: const Text('UKR_OSINT'),
         actions: [
           IconButton(icon: Icon(Icons.analytics, color: uaYellow), onPressed: () {
-             _secretCounter++;
-             if (_secretCounter >= 5) {
-               _logAction("SYS: Режим БАВОВНА");
-               Navigator.push(context, MaterialPageRoute(builder: (_) => CottonGame(onLog: _logAction)));
-             }
+            _showSysInfo();
+            if (++_secretCounter >= 5) Navigator.push(context, MaterialPageRoute(builder: (_) => CottonGame(onLog: _logAction)));
           }),
-          IconButton(icon: const Icon(Icons.receipt_long), onPressed: _showAuditLog),
-          IconButton(icon: const Icon(Icons.download), onPressed: _importFromTxt),
+          IconButton(icon: const Icon(Icons.download), onPressed: () {}),
         ],
         bottom: TabBar(controller: _tabController, isScrollable: true, tabs: categories.map((c) => Tab(text: c)).toList()),
       ),
-      body: Container(
-        decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF040B16), Color(0xFF040E22)], begin: Alignment.topCenter, end: Alignment.bottomCenter)),
-        child: SafeArea(
-          child: TabBarView(
-            controller: _tabController,
-            children: categories.map((cat) {
-              if (cat == 'ДОКУМЕНТИ') return _buildDocsList();
-              if (cat == 'ІНСТРУМЕНТИ') return ToolsMenuScreen(onLog: _logAction);
-              final items = prompts.where((p) => p.category == cat).toList();
-              return ListView.builder(
-                itemCount: items.length,
-                itemBuilder: (ctx, i) => Card(
-                  color: Colors.white.withOpacity(0.03),
-                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  child: ListTile(
-                    title: Text(items[i].title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text(items[i].content, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    leading: Icon(items[i].isFavorite ? Icons.star : Icons.star_border, color: uaYellow),
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => GenScreen(p: items[i], onLog: _logAction))),
-                    onLongPress: () => _addOrEditPrompt(p: items[i]),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: uaBlue,
-        onPressed: () => _tabController.index == 5 ? _pickPDF() : _addOrEditPrompt(),
-        child: Icon(_tabController.index == 5 ? Icons.picture_as_pdf : Icons.add),
+      body: TabBarView(
+        controller: _tabController,
+        children: categories.map((cat) {
+          if (cat == 'ІНСТРУМЕНТИ') return ToolsMenuScreen(onLog: _logAction);
+          if (cat == 'ДОКУМЕНТИ') return _buildDocs();
+          final items = prompts.where((p) => p.category == cat).toList();
+          return ListView.builder(itemCount: items.length, itemBuilder: (ctx, i) => Card(
+            margin: const EdgeInsets.all(8), color: Colors.white10,
+            child: ListTile(title: Text(items[i].title), subtitle: Text(items[i].content), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => GenScreen(p: items[i], onLog: _logAction)))),
+          ));
+        }).toList(),
       ),
     );
   }
 
-  Widget _buildDocsList() {
-    return ListView.builder(
-      itemCount: docs.length,
-      itemBuilder: (ctx, i) => ListTile(
-        leading: const Icon(Icons.description),
-        title: Text(docs[i].name),
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PDFViewerScreen(doc: docs[i]))),
-        trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => setState(() => docs.removeAt(i))),
-      ),
-    );
-  }
-
-  void _showAuditLog() {
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      backgroundColor: const Color(0xFF040E22),
-      title: const Text('AUDIT LOG'),
-      content: SizedBox(width: double.maxFinite, height: 300, child: ListView.builder(itemCount: auditLogs.length, itemBuilder: (ctx, i) => Text(auditLogs[i], style: const TextStyle(fontSize: 10, color: Colors.greenAccent)))),
-      actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('CLOSE'))],
-    ));
-  }
-
+  Widget _buildDocs() => ListView.builder(itemCount: docs.length, itemBuilder: (ctx, i) => ListTile(title: Text(docs[i].name), leading: const Icon(Icons.file_copy), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PDFViewerScreen(doc: docs[i])))));
+  
   void _pickPDF() async {
     FilePickerResult? r = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['pdf']);
     if (r != null) {
@@ -313,116 +178,91 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   }
 }
 
-// --- НОВИЙ МОДУЛЬ: SHERLOCK (Пошук за нікнеймом) ---
-
-class SherlockScreen extends StatefulWidget {
+// --- НОВИЙ ОФЛАЙН ГЕНЕРАТОР НІКНЕЙМІВ ---
+class NicknameGenScreen extends StatefulWidget {
   final Function(String) onLog;
-  const SherlockScreen({super.key, required this.onLog});
+  const NicknameGenScreen({super.key, required this.onLog});
   @override
-  State<SherlockScreen> createState() => _SherlockScreenState();
+  State<NicknameGenScreen> createState() => _NicknameGenScreenState();
 }
 
-class _SherlockScreenState extends State<SherlockScreen> {
-  final TextEditingController _ctrl = TextEditingController();
-  Map<String, String> _res = {};
-  bool _loading = false;
-  double _prog = 0;
+class _NicknameGenScreenState extends State<NicknameGenScreen> {
+  final _c = TextEditingController();
+  List<String> _res = [];
 
-  final Map<String, String> _sites = {
-    'GitHub': 'https://github.com/',
-    'Telegram': 'https://t.me/',
-    'Instagram': 'https://www.instagram.com/',
-    'Reddit': 'https://www.reddit.com/user/',
-    'TikTok': 'https://www.tiktok.com/@',
-    'Steam': 'https://steamcommunity.com/id/',
-    'Pinterest': 'https://www.pinterest.com/',
-    'Twitter': 'https://x.com/',
-  };
-
-  void _run() async {
-    String nick = _ctrl.text.trim();
-    if (nick.isEmpty) return;
-    setState(() { _loading = true; _res.clear(); _prog = 0; });
-
-    int i = 0;
-    for (var s in _sites.entries) {
-      try {
-        final r = await http.get(Uri.parse('${s.value}$nick')).timeout(const Duration(seconds: 4));
-        setState(() {
-          _res[s.key] = (r.statusCode == 200) ? 'ЗНАЙДЕНО' : 'ВІДСУТНІЙ';
-          i++; _prog = i / _sites.length;
-        });
-      } catch (e) {
-        setState(() { _res[s.key] = 'ПОМИЛКА'; i++; });
-      }
-    }
-    setState(() => _loading = false);
-    widget.onLog("SHERLOCK: Перевірка нікнейма $nick завершена.");
+  void _generate() {
+    String s = _c.text.trim().toLowerCase();
+    if (s.isEmpty) return;
+    setState(() {
+      _res = [
+        "$s", "${s}_osint", "${s}.private", "the_$s", "real_$s", "${s}_2026",
+        "$s.ua", "$s.dev", "$s.sec", "${s}_archive",
+        "$s@gmail.com", "$s@proton.me", "$s@ukr.net", "$s.osint@mail.com"
+      ];
+    });
+    widget.onLog("Генерація варіантів для: $s");
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF040E22),
-      appBar: AppBar(title: const Text('SHERLOCK SCANNER')),
-      body: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
-        TextField(controller: _ctrl, decoration: const InputDecoration(labelText: 'ВВЕДІТЬ НІКНЕЙМ', filled: true, fillColor: Color(0xFF0A152F))),
-        const SizedBox(height: 10),
-        if (_loading) LinearProgressIndicator(value: _prog, color: Colors.yellow),
-        const SizedBox(height: 10),
-        ElevatedButton(style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50), backgroundColor: const Color(0xFF0057B7)), onPressed: _loading ? null : _run, child: const Text('ПОЧАТИ ПОШУК')),
-        Expanded(child: ListView(children: _res.entries.map((e) => ListTile(
-          title: Text(e.key), 
-          subtitle: Text('${_sites[e.key]}${_ctrl.text}'),
-          trailing: Text(e.value, style: TextStyle(color: e.value == 'ЗНАЙДЕНО' ? Colors.green : Colors.grey)),
-          onTap: () => Share.share('${_sites[e.key]}${_ctrl.text}'),
-        )).toList()))
-      ])),
-    );
-  }
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('ВАРІАНТИ НІКНЕЙМУ')),
+    body: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
+      TextField(controller: _c, decoration: const InputDecoration(labelText: 'ОСНОВНЕ СЛОВО / НІК')),
+      const SizedBox(height: 10),
+      ElevatedButton(onPressed: _generate, style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)), child: const Text('ГЕНЕРУВАТИ ОФЛАЙН')),
+      Expanded(child: ListView.builder(itemCount: _res.length, itemBuilder: (ctx, i) => ListTile(
+        title: Text(_res[i]), 
+        trailing: const Icon(Icons.copy, size: 18), 
+        onTap: () { Clipboard.setData(ClipboardData(text: _res[i])); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Скопійовано'))); },
+      )))
+    ])),
+  );
 }
-
-// --- ІНСТРУМЕНТИ ---
 
 class ToolsMenuScreen extends StatelessWidget {
   final Function(String) onLog;
   const ToolsMenuScreen({super.key, required this.onLog});
   @override
-  Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(10),
-      children: [
-        _b(context, 'SHERLOCK', 'Пошук за нікнеймом', Icons.person_search, SherlockScreen(onLog: onLog)),
-        _b(context, 'EXIF', 'Аналіз метаданих фото', Icons.image_search, ExifScreen(onLog: onLog)),
-        _b(context, 'СКАНЕР', 'Пошук IP та Email у тексті', Icons.radar, ScannerScreen(onLog: onLog)),
-        _b(context, 'DORKS', 'Google Dorks конструктор', Icons.travel_explore, DorksScreen(onLog: onLog)),
-      ],
-    );
-  }
-  Widget _b(ctx, t, s, i, scr) => Card(color: Colors.white.withOpacity(0.02), child: ListTile(leading: Icon(i, color: Colors.yellow), title: Text(t), subtitle: Text(s), onTap: () => Navigator.push(ctx, MaterialPageRoute(builder: (_) => scr))));
+  Widget build(BuildContext context) => ListView(children: [
+    _t(context, 'ВАРІАНТИ НІКНЕЙМУ', 'Офлайн генерація логінів/пошт', Icons.psychology, NicknameGenScreen(onLog: onLog)),
+    _t(context, 'DORKS', 'Google пошук (відкриває в браузері)', Icons.travel_explore, DorksScreen(onLog: onLog)),
+    _t(context, 'СКАНЕР', 'Екстракція даних з тексту', Icons.radar, ScannerScreen(onLog: onLog)),
+  ]);
+  Widget _t(ctx, t, s, i, scr) => ListTile(leading: Icon(i, color: Colors.yellow), title: Text(t), subtitle: Text(s), onTap: () => Navigator.push(ctx, MaterialPageRoute(builder: (_) => scr)));
 }
 
-// --- ІНШІ ДОПОМІЖНІ ЕКРАНИ (EXIF, SCANNER, DORKS, GEN) ---
-
-class ExifScreen extends StatefulWidget {
+class DorksScreen extends StatefulWidget {
   final Function(String) onLog;
-  const ExifScreen({super.key, required this.onLog});
+  const DorksScreen({super.key, required this.onLog});
   @override
-  State<ExifScreen> createState() => _ExifScreenState();
+  State<DorksScreen> createState() => _DorksScreenState();
 }
-class _ExifScreenState extends State<ExifScreen> {
-  Map<String, dynamic> _data = {};
-  void _pick() async {
-    FilePickerResult? r = await FilePicker.platform.pickFiles(type: FileType.image);
-    if (r != null) {
-      final bytes = await File(r.files.single.path!).readAsBytes();
-      final tags = await readExifFromBytes(bytes);
-      setState(() => _data = tags);
-      widget.onLog("EXIF: Оброблено фото ${r.files.single.name}");
-    }
+
+class _DorksScreenState extends State<DorksScreen> {
+  final _t = TextEditingController();
+  List<String> _d = [];
+  void _gen() {
+    String s = _t.text.trim();
+    if (s.isEmpty) return;
+    setState(() => _d = ["site:$s ext:pdf", "site:$s inurl:admin", "site:$s \"password\" ext:txt", "site:$s intitle:\"index of\""]);
+    widget.onLog("Dorks для: $s");
   }
   @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('EXIF')), body: Column(children: [ElevatedButton(onPressed: _pick, child: const Text('ОБРАТИ ФОТО')), Expanded(child: ListView(children: _data.entries.map((e) => ListTile(title: Text(e.key), subtitle: Text(e.value.toString()))).toList()))]));
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('GOOGLE DORKS')),
+    body: Column(children: [
+      Padding(padding: const EdgeInsets.all(16), child: TextField(controller: _t, decoration: const InputDecoration(labelText: 'Домен'))),
+      ElevatedButton(onPressed: _gen, child: const Text('ГЕНЕРУВАТИ')),
+      Expanded(child: ListView.builder(itemCount: _d.length, itemBuilder: (ctx, i) => ListTile(
+        title: Text(_d[i]), subtitle: const Text('Натисніть щоб шукати в Google'),
+        onTap: () async {
+          final url = Uri.parse('https://www.google.com/search?q=${Uri.encodeComponent(_d[i])}');
+          if (await canLaunchUrl(url)) await launchUrl(url, mode: LaunchMode.externalApplication);
+          Clipboard.setData(ClipboardData(text: _d[i]));
+        },
+      )))
+    ]),
+  );
 }
 
 class ScannerScreen extends StatefulWidget {
@@ -432,29 +272,14 @@ class ScannerScreen extends StatefulWidget {
   State<ScannerScreen> createState() => _ScannerScreenState();
 }
 class _ScannerScreenState extends State<ScannerScreen> {
-  final _c = TextEditingController();
-  List<String> _res = [];
+  final _c = TextEditingController(); List<String> _r = [];
   void _scan() {
     final ips = RegExp(r'\b(?:\d{1,3}\.){3}\d{1,3}\b').allMatches(_c.text).map((m) => "IP: ${m.group(0)}").toList();
-    final emails = RegExp(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}').allMatches(_c.text).map((m) => "EMAIL: ${m.group(0)}").toList();
-    setState(() => _res = [...ips, ...emails]);
-    widget.onLog("SCANNER: Знайдено ${_res.length} об'єктів");
+    final ems = RegExp(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}').allMatches(_c.text).map((m) => "EMAIL: ${m.group(0)}").toList();
+    setState(() => _r = [...ips, ...ems]);
   }
   @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('СКАНЕР')), body: Column(children: [TextField(controller: _c, maxLines: 5), ElevatedButton(onPressed: _scan, child: const Text('СКАНУВАТИ')), Expanded(child: ListView(children: _res.map((s) => ListTile(title: Text(s), onTap: () => Clipboard.setData(ClipboardData(text: s)))).toList()))]));
-}
-
-class DorksScreen extends StatefulWidget {
-  final Function(String) onLog;
-  const DorksScreen({super.key, required this.onLog});
-  @override
-  State<DorksScreen> createState() => _DorksScreenState();
-}
-class _DorksScreenState extends State<DorksScreen> {
-  final _t = TextEditingController(); List<String> _d = [];
-  void _gen() { String t = _t.text.trim(); if(t.isNotEmpty) setState(() => _d = ["site:$t ext:pdf", "site:$t inurl:admin", "site:$t \"password\" ext:txt"]); }
-  @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('GOOGLE DORKS')), body: Column(children: [TextField(controller: _t, decoration: const InputDecoration(labelText: 'Домен')), ElevatedButton(onPressed: _gen, child: const Text('ГЕНЕРУВАТИ')), Expanded(child: ListView(children: _d.map((s) => ListTile(title: Text(s), onTap: () => Clipboard.setData(ClipboardData(text: s)))).toList()))]));
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('СКАНЕР')), body: Column(children: [TextField(controller: _c, maxLines: 5), ElevatedButton(onPressed: _scan, child: const Text('СКАНУВАТИ')), Expanded(child: ListView(itemCount: _r.length, itemBuilder: (ctx, i) => ListTile(title: Text(_r[i]))))]));
 }
 
 class PDFViewerScreen extends StatelessWidget {
@@ -464,36 +289,20 @@ class PDFViewerScreen extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(doc.name)), body: PDFView(filePath: doc.path));
 }
 
-class GenScreen extends StatefulWidget {
-  final Prompt p;
-  final Function(String) onLog;
+class GenScreen extends StatelessWidget {
+  final Prompt p; final Function(String) onLog;
   const GenScreen({super.key, required this.p, required this.onLog});
   @override
-  State<GenScreen> createState() => _GenScreenState();
-}
-class _GenScreenState extends State<GenScreen> {
-  final Map<String, TextEditingController> _ctrls = {};
-  String _res = '';
-  @override
-  void initState() {
-    super.initState();
-    _res = widget.p.content;
-    final reg = RegExp(r'\{([^}]+)\}');
-    for (var m in reg.allMatches(widget.p.content)) { _ctrls[m.group(1)!] = TextEditingController(); }
-  }
-  @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(widget.p.title)), body: Padding(padding: const EdgeInsets.all(16), child: Column(children: [..._ctrls.keys.map((k) => TextField(controller: _ctrls[k], decoration: InputDecoration(labelText: k))), const SizedBox(height: 20), ElevatedButton(onPressed: () { String t = widget.p.content; _ctrls.forEach((k,v) => t = t.replaceAll('{$k}', v.text)); setState(() => _res = t); }, child: const Text('КОМПІЛЮВАТИ')), Expanded(child: SingleChildScrollView(child: SelectableText(_res))), Row(children: [ElevatedButton(onPressed: () => Clipboard.setData(ClipboardData(text: _res)), child: const Text('COPY')), ElevatedButton(onPressed: () => Share.share(_res), child: const Text('SHARE'))])])));
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(p.title)), body: Center(child: SelectableText(p.content)));
 }
 
-// --- ПАСХАЛКА БАВОВНА (Спрощена) ---
 class CottonGame extends StatelessWidget {
   final Function(String) onLog;
   const CottonGame({super.key, required this.onLog});
   @override
   Widget build(BuildContext context) => Scaffold(backgroundColor: Colors.black, body: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
     const Icon(Icons.local_fire_department, color: Colors.orange, size: 100),
-    const Text('ОПЕРАЦІЯ БАВОВНА АКТИВОВАНА', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-    const SizedBox(height: 20),
-    ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('BACK TO BASE'))
+    const Text('РЕЖИМ БАВОВНА АКТИВОВАНО', style: TextStyle(fontWeight: FontWeight.bold)),
+    ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('BACK'))
   ])));
 }
