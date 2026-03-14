@@ -34,4 +34,4 @@ flutter:
 
   # Секція для підключення вашої заставки
   assets:
-    - assets/splash.jpg
+    - assets/splash.png
