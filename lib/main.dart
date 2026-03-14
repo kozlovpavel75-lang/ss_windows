@@ -18,6 +18,20 @@ void main() {
   runApp(const PromptApp());
 }
 
+class Prompt {
+  String id, title, content, category;
+  Prompt({required this.id, required this.title, required this.content, required this.category});
+  Map<String, dynamic> toJson() => {'id': id, 'title': title, 'content': content, 'category': category};
+  factory Prompt.fromJson(Map<String, dynamic> json) => Prompt(id: json['id'], title: json['title'], content: json['content'], category: json['category']);
+}
+
+class PDFDoc {
+  String id, name, path;
+  PDFDoc({required this.id, required this.name, required this.path});
+  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'path': path};
+  factory PDFDoc.fromJson(Map<String, dynamic> json) => PDFDoc(id: json['id'], name: json['name'], path: json['path']);
+}
+
 class PromptApp extends StatelessWidget {
   const PromptApp({super.key});
   @override
@@ -81,6 +95,13 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     _loadData();
   }
 
+  void _logAction(String action) {
+    final now = DateTime.now();
+    final timeStr = "${now.day.toString().padLeft(2,'0')}.${now.month.toString().padLeft(2,'0')} ${now.hour}:${now.minute}";
+    setState(() { auditLogs.insert(0, "[$timeStr] $action"); });
+    _save();
+  }
+
   void _loadData() async {
     final prefs = await SharedPreferences.getInstance();
     final pStr = prefs.getString('prompts_data');
@@ -116,7 +137,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         actions: [
           IconButton(icon: Icon(Icons.analytics, color: uaYellow), onPressed: () {
             _showSysInfo();
-            if (++_secretCounter >= 5) Navigator.push(context, MaterialPageRoute(builder: (_) => CottonGame()));
+            if (++_secretCounter >= 5) Navigator.push(context, MaterialPageRoute(builder: (_) => const CottonGame()));
           }),
         ],
         bottom: TabBar(controller: _tabController, isScrollable: true, tabs: categories.map((c) => Tab(text: c)).toList()),
@@ -124,12 +145,12 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       body: TabBarView(
         controller: _tabController,
         children: categories.map((cat) {
-          if (cat == 'ІНСТРУМЕНТИ') return ToolsMenuScreen();
+          if (cat == 'ІНСТРУМЕНТИ') return ToolsMenuScreen(onLog: _logAction);
           if (cat == 'ДОКУМЕНТИ') return _buildDocs();
           final items = prompts.where((p) => p.category == cat).toList();
           return ListView.builder(itemCount: items.length, itemBuilder: (ctx, i) => Card(
             margin: const EdgeInsets.all(8), color: Colors.white10,
-            child: ListTile(title: Text(items[i].title), subtitle: Text(items[i].content), onTap: () {}),
+            child: ListTile(title: Text(items[i].title), subtitle: Text(items[i].content), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => GenScreen(p: items[i], onLog: _logAction)))),
           ));
         }).toList(),
       ),
@@ -141,6 +162,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
 
 // --- ВИПРАВЛЕНИЙ DORKS SCREEN З АНІМАЦІЄЮ ---
 class DorksScreen extends StatefulWidget {
+  const DorksScreen({super.key});
   @override
   State<DorksScreen> createState() => _DorksScreenState();
 }
@@ -154,7 +176,6 @@ class _DorksScreenState extends State<DorksScreen> {
     String s = _t.text.trim();
     if (s.isEmpty) return;
     
-    // Очищуємо стару анімацію
     for (var i = 0; i < _d.length; i++) {
        _listKey.currentState?.removeItem(0, (ctx, anim) => const SizedBox());
     }
@@ -170,7 +191,6 @@ class _DorksScreenState extends State<DorksScreen> {
       ];
     });
 
-    // Додаємо з анімацією
     Future.delayed(const Duration(milliseconds: 50), () {
       for (var i = 0; i < _d.length; i++) {
         _listKey.currentState?.insertItem(i, duration: Duration(milliseconds: 300 + (i * 100)));
@@ -212,11 +232,7 @@ class _DorksScreenState extends State<DorksScreen> {
                         Clipboard.setData(ClipboardData(text: _d[index]));
                         HapticFeedback.mediumImpact();
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            backgroundColor: const Color(0xFF0057B7),
-                            content: Text('СКОПІЙОВАНО: ${_d[index]}'),
-                            duration: const Duration(seconds: 1),
-                          )
+                          SnackBar(backgroundColor: const Color(0xFF0057B7), content: Text('СКОПІЙОВАНО: ${_d[index]}'), duration: const Duration(seconds: 1))
                         );
                       },
                     ),
@@ -233,6 +249,7 @@ class _DorksScreenState extends State<DorksScreen> {
 
 // --- ВАРІАНТИ НІКНЕЙМУ ---
 class NicknameGenScreen extends StatefulWidget {
+  const NicknameGenScreen({super.key});
   @override
   State<NicknameGenScreen> createState() => _NicknameGenScreenState();
 }
@@ -255,23 +272,29 @@ class _NicknameGenScreenState extends State<NicknameGenScreen> {
     body: Column(children: [
       Padding(padding: const EdgeInsets.all(16), child: TextField(controller: _c, decoration: const InputDecoration(labelText: 'СЛОВО'))),
       ElevatedButton(onPressed: _generate, child: const Text('ГЕНЕРУВАТИ')),
-      Expanded(child: ListView.builder(itemCount: _res.length, itemBuilder: (ctx, i) => ListTile(title: Text(_res[i]), onTap: () => Clipboard.setData(ClipboardData(text: _res[i])))))
+      Expanded(child: ListView.builder(itemCount: _res.length, itemBuilder: (ctx, i) => ListTile(title: Text(_res[i]), onTap: () {
+        Clipboard.setData(ClipboardData(text: _res[i]));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Скопійовано')));
+      })))
     ]),
   );
 }
 
 // --- ІНСТРУМЕНТИ ---
 class ToolsMenuScreen extends StatelessWidget {
+  final Function(String) onLog;
+  const ToolsMenuScreen({super.key, required this.onLog});
   @override
   Widget build(BuildContext context) => ListView(children: [
-    _t(context, 'ВАРІАНТИ НІКНЕЙМУ', 'Генерація офлайн', Icons.psychology, NicknameGenScreen()),
-    _t(context, 'DORKS', 'Ті самі дорки (тільки копіювання)', Icons.travel_explore, DorksScreen()),
-    _t(context, 'СКАНЕР', 'Екстракція даних', Icons.radar, ScannerScreen()),
+    _t(context, 'ВАРІАНТИ НІКНЕЙМУ', 'Генерація офлайн', Icons.psychology, const NicknameGenScreen()),
+    _t(context, 'DORKS', 'Кібер-конструктор (тільки копіювання)', Icons.travel_explore, const DorksScreen()),
+    _t(context, 'СКАНЕР', 'Екстракція даних', Icons.radar, const ScannerScreen()),
   ]);
   Widget _t(ctx, t, s, i, scr) => ListTile(leading: Icon(i, color: Colors.yellow), title: Text(t), subtitle: Text(s), onTap: () => Navigator.push(ctx, MaterialPageRoute(builder: (_) => scr)));
 }
 
 class ScannerScreen extends StatefulWidget {
+  const ScannerScreen({super.key});
   @override
   State<ScannerScreen> createState() => _ScannerScreenState();
 }
@@ -282,10 +305,11 @@ class _ScannerScreenState extends State<ScannerScreen> {
     setState(() => _r = ips);
   }
   @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('СКАНЕР')), body: Column(children: [TextField(controller: _c, maxLines: 5), ElevatedButton(onPressed: _scan, child: const Text('СКАНУВАТИ')), Expanded(child: ListView.builder(itemCount: _r.length, itemBuilder: (ctx, i) => ListTile(title: Text(_r[i]))))]));
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('СКАНЕР')), body: Column(children: [Padding(padding: const EdgeInsets.all(16), child: TextField(controller: _c, maxLines: 5)), ElevatedButton(onPressed: _scan, child: const Text('СКАНУВАТИ')), Expanded(child: ListView.builder(itemCount: _r.length, itemBuilder: (ctx, i) => ListTile(title: Text(_r[i]))))]));
 }
 
 class CottonGame extends StatelessWidget {
+  const CottonGame({super.key});
   @override
   Widget build(BuildContext context) => Scaffold(backgroundColor: Colors.black, body: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.local_fire_department, size: 100, color: Colors.orange), const Text('БАВОВНА!'), ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('BACK'))])));
 }
@@ -297,24 +321,65 @@ class PDFViewerScreen extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(doc.name)), body: PDFView(filePath: doc.path));
 }
 
-class GenScreen extends StatelessWidget {
+// --- ПРАВИЛЬНИЙ, ВІДНОВЛЕНИЙ GEN SCREEN ---
+class GenScreen extends StatefulWidget {
   final Prompt p;
-  const GenScreen({super.key, required this.p, required this.onLog}); // onLog прибрав для спрощення тут
-  GenScreen({required this.p, required Function(String) onLog});
+  final Function(String) onLog;
+  const GenScreen({super.key, required this.p, required this.onLog});
   @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(p.title)), body: Center(child: SelectableText(p.content)));
+  State<GenScreen> createState() => _GenScreenState();
 }
 
-// МОДЕЛІ (коротко)
-class Prompt {
-  String id, title, content, category;
-  Prompt({required this.id, required this.title, required this.content, required this.category});
-  Map<String, dynamic> toJson() => {'id': id, 'title': title, 'content': content, 'category': category};
-  factory Prompt.fromJson(Map<String, dynamic> json) => Prompt(id: json['id'], title: json['title'], content: json['content'], category: json['category']);
-}
-class PDFDoc {
-  String id, name, path;
-  PDFDoc({required this.id, required this.name, required this.path});
-  Map<String, dynamic> toJson() => {'id': id, 'name': name, 'path': path};
-  factory PDFDoc.fromJson(Map<String, dynamic> json) => PDFDoc(id: json['id'], name: json['name'], path: json['path']);
+class _GenScreenState extends State<GenScreen> {
+  final Map<String, TextEditingController> _ctrls = {};
+  String _res = '';
+  
+  @override
+  void initState() {
+    super.initState();
+    _res = widget.p.content;
+    final reg = RegExp(r'\{([^}]+)\}');
+    for (var m in reg.allMatches(widget.p.content)) {
+      _ctrls[m.group(1)!] = TextEditingController();
+    }
+  }
+  
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Text(widget.p.title)),
+    body: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(children: [
+        ..._ctrls.keys.map((k) => Padding(
+          padding: const EdgeInsets.only(bottom: 8.0),
+          child: TextField(controller: _ctrls[k], decoration: InputDecoration(labelText: k)),
+        )),
+        const SizedBox(height: 10),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7), minimumSize: const Size(double.infinity, 50)),
+          onPressed: () {
+            String t = widget.p.content;
+            _ctrls.forEach((k,v) => t = t.replaceAll('{$k}', v.text));
+            setState(() => _res = t);
+            widget.onLog("Згенеровано: ${widget.p.title}");
+          },
+          child: const Text('КОМПІЛЮВАТИ', style: TextStyle(color: Colors.white))
+        ),
+        const SizedBox(height: 10),
+        Expanded(child: SingleChildScrollView(child: SelectableText(_res, style: const TextStyle(fontFamily: 'monospace')))),
+        Row(children: [
+          Expanded(child: ElevatedButton(onPressed: () {
+            Clipboard.setData(ClipboardData(text: _res));
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Скопійовано')));
+          }, child: const Text('COPY'))),
+          const SizedBox(width: 10),
+          Expanded(child: ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFD700)),
+            onPressed: () => Share.share(_res),
+            child: const Text('SHARE', style: TextStyle(color: Colors.black))
+          ))
+        ])
+      ])
+    )
+  );
 }
