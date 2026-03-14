@@ -18,7 +18,7 @@ void main() {
   runApp(const PromptApp());
 }
 
-// --- МОДЕЛІ ДАНИХ (Повернуто isFavorite) ---
+// --- МОДЕЛІ ДАНИХ ---
 class Prompt {
   String id, title, content, category;
   bool isFavorite;
@@ -98,7 +98,6 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
   List<Prompt> prompts = [];
   List<PDFDoc> docs = [];
   List<String> auditLogs = [];
-  int _secretCounter = 0;
 
   final List<String> categories = ['ФО', 'ЮО', 'ГЕОІНТ', 'МОНІТОРИНГ', 'ІНСТРУМЕНТИ', 'ДОКУМЕНТИ'];
   final Color uaYellow = const Color(0xFFFFD700);
@@ -285,13 +284,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       appBar: AppBar(
         title: const Text('UKR_OSINT', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2)),
         actions: [
-          IconButton(icon: Icon(Icons.analytics, color: uaYellow), onPressed: () {
-            _showSysInfo();
-            if (++_secretCounter >= 5) {
-              _secretCounter = 0;
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const CottonGame()));
-            }
-          }),
+          IconButton(icon: Icon(Icons.analytics, color: uaYellow), onPressed: _showSysInfo), // Гра видалена, тільки статистика
           IconButton(icon: const Icon(Icons.receipt_long, color: Colors.white70), onPressed: _showAuditLog),
           IconButton(icon: Icon(Icons.download, color: uaBlue), onPressed: _importFromTxt),
         ],
@@ -303,7 +296,6 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
           if (cat == 'ІНСТРУМЕНТИ') return ToolsMenuScreen(onLog: _logAction);
           if (cat == 'ДОКУМЕНТИ') return _buildDocs();
           
-          // ВІДНОВЛЕНО: Сортування та Drag & Drop
           final items = prompts.where((p) => p.category == cat).toList();
           items.sort((a, b) => (b.isFavorite ? 1 : 0).compareTo(a.isFavorite ? 1 : 0));
           
@@ -338,7 +330,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                   title: Text(p.title, style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text(p.content, maxLines: 1, overflow: TextOverflow.ellipsis),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => GenScreen(p: p, onLog: _logAction))),
-                  onLongPress: () => _addOrEditPrompt(p: p), // Довгий тап для редагування все ще працює
+                  onLongPress: () => _addOrEditPrompt(p: p),
                 ),
               );
             }
@@ -378,7 +370,7 @@ class ToolsMenuScreen extends StatelessWidget {
       _t(context, 'ВАРІАНТИ НІКНЕЙМУ', 'Офлайн генерація логінів/пошт', Icons.psychology, NicknameGenScreen(onLog: onLog)),
       _t(context, 'DORKS', 'Кібер-конструктор Google запитів', Icons.travel_explore, DorksScreen(onLog: onLog)),
       _t(context, 'МЕНЕДЖЕР ПАРОЛІВ', 'Захищений крипто-блокнот', Icons.lock_outline, PasswordManagerScreen(onLog: onLog)),
-      _t(context, 'СКАНЕР', 'Екстракція даних', Icons.radar, ScannerScreen(onLog: onLog)),
+      _t(context, 'СКАНЕР', 'Екстракція об\'єктів з тексту', Icons.radar, ScannerScreen(onLog: onLog)),
       _t(context, 'EXIF', 'Аналіз метаданих фотографії', Icons.image_search, ExifScreen(onLog: onLog)),
     ]
   );
@@ -697,7 +689,7 @@ class _DorksScreenState extends State<DorksScreen> {
   }
 }
 
-// --- СКАНЕР ---
+// --- СКАНЕР (ПОСИЛЕНО REGEX) ---
 class ScannerScreen extends StatefulWidget {
   final Function(String) onLog;
   const ScannerScreen({super.key, required this.onLog});
@@ -706,22 +698,39 @@ class ScannerScreen extends StatefulWidget {
 }
 
 class _ScannerScreenState extends State<ScannerScreen> {
-  final _c = TextEditingController(); List<String> _r = [];
+  final _c = TextEditingController(); 
+  List<String> _r = [];
+
   void _scan() {
-    final ips = RegExp(r'\b(?:\d{1,3}\.){3}\d{1,3}\b').allMatches(_c.text).map((m) => "IP: ${m.group(0)}").toList();
-    final ems = RegExp(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}').allMatches(_c.text).map((m) => "EMAIL: ${m.group(0)}").toList();
-    setState(() => _r = [...ips, ...ems]);
+    String text = _c.text;
+    if (text.isEmpty) return;
+
+    // Вдосконалені регулярні вирази
+    final ips = RegExp(r'\b(?:\d{1,3}\.){3}\d{1,3}\b').allMatches(text).map((m) => "IP: ${m.group(0)}").toList();
+    final ems = RegExp(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}').allMatches(text).map((m) => "EMAIL: ${m.group(0)}").toList();
+    
+    // Телефони (UA/RU та міжнародні формати)
+    final phones = RegExp(r'(?:\+380|\+7|8)[ \-\(\)]?\d{2,3}[ \-\(\)]?\d{3}[ \-]?\d{2}[ \-]?\d{2}').allMatches(text).map((m) => "PHONE: ${m.group(0)}").toList();
+    
+    // Посилання на популярні соцмережі
+    final links = RegExp(r'(?:https?:\/\/)?(?:www\.)?(?:t\.me|instagram\.com|facebook\.com|vk\.com|x\.com|twitter\.com|tiktok\.com|linkedin\.com)\/[a-zA-Z0-9_.-]+').allMatches(text).map((m) => "SOCIAL: ${m.group(0)}").toList();
+    
+    // Нікнейми (@username)
+    final nicks = RegExp(r'(?:^|\s)(@[a-zA-Z0-9_]+)').allMatches(text).map((m) => "NICK: ${m.group(1)}").toList();
+
+    setState(() => _r = [...ips, ...ems, ...phones, ...links, ...nicks]);
     widget.onLog("Сканер: знайдено ${_r.length} артефактів");
     FocusScope.of(context).unfocus();
   }
+
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('СКАНЕР')), 
+    appBar: AppBar(title: const Text('ЕКСТРАКТОР АРТЕФАКТІВ')), 
     body: Column(children: [
-      Padding(padding: const EdgeInsets.all(16), child: TextField(controller: _c, maxLines: 5, decoration: const InputDecoration(labelText: 'Вставте текст для аналізу'))), 
+      Padding(padding: const EdgeInsets.all(16), child: TextField(controller: _c, maxLines: 5, decoration: const InputDecoration(labelText: 'Вставте текст (логи, дампи, статті)'))), 
       ElevatedButton(
-        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7)),
-        onPressed: _scan, child: const Text('ЕКСТРАКЦІЯ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7), minimumSize: const Size(double.infinity, 50)),
+        onPressed: _scan, child: const Text('СКАЙНУВАТИ ТЕКСТ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
       ), 
       const SizedBox(height: 10),
       Expanded(child: ListView.builder(itemCount: _r.length, itemBuilder: (ctx, i) => Card(
@@ -730,7 +739,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
           title: Text(_r[i], style: const TextStyle(fontFamily: 'monospace', color: Colors.greenAccent)),
           trailing: const Icon(Icons.copy, size: 18, color: Colors.white54),
           onTap: () {
-            Clipboard.setData(ClipboardData(text: _r[i]));
+            Clipboard.setData(ClipboardData(text: _r[i].split(': ').last)); // Копіюємо тільки саме значення
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Скопійовано')));
           }
         )
@@ -817,7 +826,7 @@ class _ExifScreenState extends State<ExifScreen> {
   }
 }
 
-// --- GEN SCREEN З ТАКТИЧНИМ ПІДСИЛЕННЯМ (ВИПРАВЛЕНО BORDER.ALL) ---
+// --- GEN SCREEN З ТАКТИЧНИМ ПІДСИЛЕННЯМ ---
 class GenScreen extends StatefulWidget {
   final Prompt p;
   final Function(String) onLog;
@@ -832,12 +841,12 @@ class _GenScreenState extends State<GenScreen> {
   String _finalRes = '';
   bool _isCompiled = false;
   
-  // База технік підсилення
+  // Розширена база технік підсилення
   final List<PromptEnhancer> _enhancers = [
     PromptEnhancer(
       name: 'CoT (Chain of Thought)', 
       desc: 'Змушує ШІ думати покроково.', 
-      bestWith: 'Складні логічні завдання, пошук зв\'язків.', 
+      bestWith: 'Складні логічні завдання, пошук прихованих зв\'язків.', 
       warning: 'Відповідь буде значно довшою.', 
       payload: 'Пояснюй свій хід думок крок за кроком (Step-by-step) перед тим, як надати фінальну відповідь.'
     ),
@@ -856,10 +865,24 @@ class _GenScreenState extends State<GenScreen> {
       payload: 'Дій як старший аналітик розвідки з 10-річним досвідом. Твоя відповідь має бути максимально професійною, без зайвої "води".'
     ),
     PromptEnhancer(
+      name: 'BLUF (Звіт Розвідки)', 
+      desc: 'Головний висновок на початку.', 
+      bestWith: 'Формування звітів для керівництва.', 
+      warning: 'Може скоротити детальний опис.', 
+      payload: 'Використовуй формат BLUF (Bottom Line Up Front). Почни з головного висновку (1-2 речення), а потім наводь аргументи маркованим списком.'
+    ),
+    PromptEnhancer(
+      name: 'Саморефлексія (Критик)', 
+      desc: 'ШІ шукає власні помилки.', 
+      bestWith: 'Фактчекінг, пошук логічних дір.', 
+      warning: 'Витрачає більше часу на генерацію.', 
+      payload: 'Після формування відповіді, критично оціни її. Знайди можливі логічні помилки, упередження або брак доказів, і додай абзац з виправленнями.'
+    ),
+    PromptEnhancer(
       name: 'Жорстке Форматування (JSON)', 
       desc: 'Видача результату у вигляді коду.', 
-      bestWith: 'Екстракція даних для подальшої обробки.', 
-      warning: 'Конфліктує з CoT (текст може поламати JSON).', 
+      bestWith: 'Екстракція даних для бази (Монго, SQL).', 
+      warning: 'Конфліктує з CoT (текст може поламати код).', 
       payload: 'Поверни результат ВИКЛЮЧНО у форматі валідного JSON. Не пиши жодного тексту до або після JSON блоку.'
     ),
   ];
@@ -988,7 +1011,6 @@ class _GenScreenState extends State<GenScreen> {
           const SizedBox(height: 10),
           Expanded(child: Container(
             width: double.infinity, padding: const EdgeInsets.all(12),
-            // ТУТ ВИПРАВЛЕНО: Border.all замість BorderSide
             decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(8), border: Border.all(color: _enhancers.any((e) => e.isSelected) ? const Color(0xFF0057B7) : Colors.transparent)),
             child: SingleChildScrollView(child: SelectableText(_finalRes.isEmpty ? _baseCompiled : _finalRes, style: const TextStyle(fontFamily: 'monospace')))
           )),
@@ -1022,22 +1044,10 @@ class _GenScreenState extends State<GenScreen> {
   );
 }
 
-// --- PDF ТА БАВОВНА ---
+// --- PDF ---
 class PDFViewerScreen extends StatelessWidget {
   final PDFDoc doc;
   const PDFViewerScreen({super.key, required this.doc});
   @override
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(doc.name)), body: PDFView(filePath: doc.path));
-}
-
-class CottonGame extends StatelessWidget {
-  const CottonGame({super.key});
-  @override
-  Widget build(BuildContext context) => Scaffold(backgroundColor: Colors.black, body: Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-    const Icon(Icons.local_fire_department, size: 100, color: Colors.orange), 
-    const SizedBox(height: 20),
-    const Text('РЕЖИМ БАВОВНА АКТИВОВАНО', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 18)), 
-    const SizedBox(height: 20),
-    ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent), onPressed: () => Navigator.pop(context), child: const Text('ПОВЕРНУТИСЯ', style: TextStyle(color: Colors.white)))
-  ])));
 }
