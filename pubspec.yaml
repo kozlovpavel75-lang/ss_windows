@@ -15,9 +15,10 @@ dependencies:
   path_provider: ^2.1.2
   flutter_pdfview: 1.3.1
   exif: ^3.1.4
-  # Додаткові пакети для стабільності
   intl: ^0.19.0
   permission_handler: ^11.3.1
+  # Додано для роботи Sherlock (HTTP запити)
+  http: ^1.2.1
 
 dev_dependencies:
   flutter_test:
@@ -32,6 +33,6 @@ flutter_launcher_icons:
 flutter:
   uses-material-design: true
 
-  # Секція для підключення вашої заставки
+  # Секція активів (Заставка та іконки)
   assets:
     - assets/splash.png
