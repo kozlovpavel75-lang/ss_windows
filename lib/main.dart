@@ -138,17 +138,33 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     await prefs.setStringList('audit_logs', auditLogs);
   }
 
+  // ВІДНОВЛЕНА ПРАВИЛЬНА СТАТИСТИКА
   void _showSysInfo() {
+    Map<String, int> stats = {'ФО': 0, 'ЮО': 0, 'ГЕОІНТ': 0, 'МОНІТОРИНГ': 0};
+    for (var p in prompts) {
+      if (stats.containsKey(p.category)) stats[p.category] = stats[p.category]! + 1;
+    }
+
     showDialog(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: const Color(0xFF040E22),
       shape: RoundedRectangleBorder(side: BorderSide(color: uaYellow)),
-      title: const Text('SYS.INFO', style: TextStyle(fontFamily: 'monospace')),
-      content: Text('ЗАПИСІВ: ${prompts.length}\nДОКУМЕНТІВ: ${docs.length}', style: const TextStyle(fontFamily: 'monospace')),
+      title: const Text('SYS.INFO', style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+      content: Column(
+        mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('ЗАГАЛОМ ЗАПИСІВ:', style: TextStyle(color: Colors.white70, fontSize: 13)), Text('${prompts.length}', style: TextStyle(color: uaYellow, fontWeight: FontWeight.bold))]),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('ДОКУМЕНТІВ:', style: TextStyle(color: Colors.white70, fontSize: 13)), Text('${docs.length}', style: TextStyle(color: uaYellow, fontWeight: FontWeight.bold))]),
+          const Divider(color: Colors.white24, height: 20),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('ФО:', style: TextStyle(color: Colors.white70)), Text('${stats['ФО']}', style: TextStyle(color: uaBlue, fontWeight: FontWeight.bold))]),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('ЮО:', style: TextStyle(color: Colors.white70)), Text('${stats['ЮО']}', style: TextStyle(color: uaBlue, fontWeight: FontWeight.bold))]),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('ГЕОІНТ:', style: TextStyle(color: Colors.white70)), Text('${stats['ГЕОІНТ']}', style: TextStyle(color: uaBlue, fontWeight: FontWeight.bold))]),
+          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [const Text('МОНІТОРИНГ:', style: TextStyle(color: Colors.white70)), Text('${stats['МОНІТОРИНГ']}', style: TextStyle(color: uaBlue, fontWeight: FontWeight.bold))]),
+        ],
+      ),
       actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text('OK', style: TextStyle(color: uaYellow)))],
     ));
   }
   
-  // ВІДНОВЛЕНО: Журнал аудиту
   void _showAuditLog() {
     showDialog(context: context, builder: (ctx) => AlertDialog(
       backgroundColor: const Color(0xFF040E22),
@@ -167,7 +183,6 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     ));
   }
 
-  // ВІДНОВЛЕНО: Імпорт з TXT
   void _importFromTxt() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['txt']);
     if (result != null && result.files.single.path != null) {
@@ -264,7 +279,6 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       appBar: AppBar(
         title: const Text('UKR_OSINT', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2)),
         actions: [
-          // ВІДНОВЛЕНО: Усі три кнопки
           IconButton(icon: Icon(Icons.analytics, color: uaYellow), onPressed: () {
             _showSysInfo();
             if (++_secretCounter >= 5) {
@@ -325,7 +339,8 @@ class ToolsMenuScreen extends StatelessWidget {
     padding: const EdgeInsets.only(top: 10),
     children: [
       _t(context, 'ВАРІАНТИ НІКНЕЙМУ', 'Офлайн генерація логінів/пошт', Icons.psychology, NicknameGenScreen(onLog: onLog)),
-      _t(context, 'DORKS', 'Кібер-конструктор (тільки копіювання)', Icons.travel_explore, DorksScreen(onLog: onLog)),
+      _t(context, 'DORKS', 'Кібер-конструктор Google запитів', Icons.travel_explore, DorksScreen(onLog: onLog)),
+      _t(context, 'МЕНЕДЖЕР ПАРОЛІВ', 'Захищений крипто-блокнот', Icons.lock_outline, PasswordManagerScreen(onLog: onLog)),
       _t(context, 'СКАНЕР', 'Екстракція даних', Icons.radar, ScannerScreen(onLog: onLog)),
       _t(context, 'EXIF', 'Аналіз метаданих фотографії', Icons.image_search, ExifScreen(onLog: onLog)),
     ]
@@ -335,6 +350,169 @@ class ToolsMenuScreen extends StatelessWidget {
     margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), color: Colors.white.withOpacity(0.03),
     child: ListTile(leading: Icon(i, color: const Color(0xFFFFD700)), title: Text(t, style: const TextStyle(fontWeight: FontWeight.bold)), subtitle: Text(s), onTap: () => Navigator.push(ctx, MaterialPageRoute(builder: (_) => scr)))
   );
+}
+
+// --- МЕНЕДЖЕР ПАРОЛІВ (НОВИЙ) ---
+class PasswordManagerScreen extends StatefulWidget {
+  final Function(String) onLog;
+  const PasswordManagerScreen({super.key, required this.onLog});
+  @override
+  State<PasswordManagerScreen> createState() => _PasswordManagerScreenState();
+}
+
+class _PasswordManagerScreenState extends State<PasswordManagerScreen> {
+  String? _masterPwd;
+  bool _isUnlocked = false;
+  List<Map<String, dynamic>> _vault = [];
+  final _pwdCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVault();
+  }
+
+  void _loadVault() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _masterPwd = prefs.getString('master_pwd');
+      final v = prefs.getString('vault_data');
+      if (v != null) _vault = List<Map<String, dynamic>>.from(json.decode(v));
+    });
+  }
+
+  void _saveVault() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('vault_data', json.encode(_vault));
+    await prefs.setString('master_pwd', _masterPwd!);
+  }
+
+  void _auth() {
+    if (_pwdCtrl.text == _masterPwd) {
+      setState(() { _isUnlocked = true; _pwdCtrl.clear(); });
+      widget.onLog("SYS: Сховище паролів розблоковано");
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Невірний пароль!', style: TextStyle(color: Colors.red))));
+    }
+  }
+
+  void _setupMaster() {
+    if (_pwdCtrl.text.isNotEmpty) {
+      setState(() { _masterPwd = _pwdCtrl.text; _isUnlocked = true; _pwdCtrl.clear(); });
+      _saveVault();
+      widget.onLog("SYS: Встановлено майстер-пароль");
+    }
+  }
+
+  void _changeMaster() {
+    final c = TextEditingController();
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      backgroundColor: const Color(0xFF0A152F),
+      title: const Text('ЗМІНА МАЙСТЕР-ПАРОЛЯ'),
+      content: TextField(controller: c, obscureText: true, decoration: const InputDecoration(labelText: 'Новий пароль')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('СКАСУВАТИ')),
+        ElevatedButton(onPressed: () {
+          if (c.text.isNotEmpty) {
+            setState(() => _masterPwd = c.text);
+            _saveVault();
+            widget.onLog("SYS: Майстер-пароль змінено");
+          }
+          Navigator.pop(ctx);
+        }, child: const Text('ЗБЕРЕГТИ'))
+      ],
+    ));
+  }
+
+  void _addRecord() {
+    final rC = TextEditingController(), lC = TextEditingController(), pC = TextEditingController();
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      backgroundColor: const Color(0xFF0A152F),
+      title: const Text('НОВИЙ ЗАПИС'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: rC, decoration: const InputDecoration(labelText: 'Ресурс (напр. Telegram)')),
+        const SizedBox(height: 10),
+        TextField(controller: lC, decoration: const InputDecoration(labelText: 'Логін / Email')),
+        const SizedBox(height: 10),
+        TextField(controller: pC, decoration: const InputDecoration(labelText: 'Пароль')),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('СКАСУВАТИ')),
+        ElevatedButton(onPressed: () {
+          if (rC.text.isNotEmpty) {
+            setState(() => _vault.add({'res': rC.text, 'log': lC.text, 'pwd': pC.text}));
+            _saveVault();
+          }
+          Navigator.pop(ctx);
+        }, child: const Text('ДОДАТИ'))
+      ],
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_masterPwd == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('СЕКРЕТНЕ СХОВИЩЕ')),
+        body: Padding(padding: const EdgeInsets.all(20), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          const Icon(Icons.shield, size: 80, color: Color(0xFF0057B7)),
+          const SizedBox(height: 20),
+          const Text('Встановіть Майстер-Пароль для захисту', textAlign: TextAlign.center),
+          const SizedBox(height: 20),
+          TextField(controller: _pwdCtrl, obscureText: true, decoration: const InputDecoration(labelText: 'Майстер-пароль')),
+          const SizedBox(height: 10),
+          ElevatedButton(style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50), backgroundColor: const Color(0xFFFFD700)), onPressed: _setupMaster, child: const Text('ЗБЕРЕГТИ', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)))
+        ])),
+      );
+    }
+
+    if (!_isUnlocked) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('СЕКРЕТНЕ СХОВИЩЕ')),
+        body: Padding(padding: const EdgeInsets.all(20), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          const Icon(Icons.lock, size: 80, color: Colors.white54),
+          const SizedBox(height: 20),
+          TextField(controller: _pwdCtrl, obscureText: true, decoration: const InputDecoration(labelText: 'Введіть пароль')),
+          const SizedBox(height: 10),
+          ElevatedButton(style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50), backgroundColor: const Color(0xFF0057B7)), onPressed: _auth, child: const Text('РОЗБЛОКУВАТИ', style: TextStyle(color: Colors.white)))
+        ])),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('СХОВИЩЕ ПАРОЛІВ'),
+        actions: [IconButton(icon: const Icon(Icons.key, color: Color(0xFFFFD700)), onPressed: _changeMaster)],
+      ),
+      body: _vault.isEmpty 
+        ? const Center(child: Text('Сховище порожнє', style: TextStyle(color: Colors.white54))) 
+        : ListView.builder(itemCount: _vault.length, itemBuilder: (ctx, i) {
+            final item = _vault[i];
+            return Card(
+              color: Colors.white.withOpacity(0.05), margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              child: ExpansionTile(
+                title: Text(item['res'], style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.greenAccent)),
+                subtitle: Text(item['log']),
+                children: [
+                  ListTile(
+                    title: Text(item['pwd'], style: const TextStyle(fontFamily: 'monospace')),
+                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                      IconButton(icon: const Icon(Icons.copy, color: Colors.white54), onPressed: () {
+                        Clipboard.setData(ClipboardData(text: item['pwd']));
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Пароль скопійовано')));
+                      }),
+                      IconButton(icon: const Icon(Icons.delete, color: Colors.redAccent), onPressed: () {
+                        setState(() => _vault.removeAt(i)); _saveVault();
+                      }),
+                    ]),
+                  )
+                ],
+              ),
+            );
+          }),
+      floatingActionButton: FloatingActionButton(backgroundColor: const Color(0xFF0057B7), onPressed: _addRecord, child: const Icon(Icons.add, color: Colors.white)),
+    );
+  }
 }
 
 // --- ВАРІАНТИ НІКНЕЙМУ ---
@@ -389,7 +567,7 @@ class _NicknameGenScreenState extends State<NicknameGenScreen> {
   );
 }
 
-// --- ВИПРАВЛЕНИЙ DORKS SCREEN З АНІМАЦІЄЮ ---
+// --- DORKS SCREEN (З ГРУПАМИ ТА ПОЯСНЕННЯМИ) ---
 class DorksScreen extends StatefulWidget {
   final Function(String) onLog;
   const DorksScreen({super.key, required this.onLog});
@@ -399,7 +577,7 @@ class DorksScreen extends StatefulWidget {
 
 class _DorksScreenState extends State<DorksScreen> {
   final _t = TextEditingController();
-  List<String> _d = [];
+  List<Map<String, String>> _d = [];
   final GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
 
   void _gen() {
@@ -412,16 +590,18 @@ class _DorksScreenState extends State<DorksScreen> {
 
     setState(() {
       _d = [
-        "site:$s ext:pdf",
-        "site:$s inurl:admin",
-        "site:$s \"password\" ext:txt",
-        "site:$s intitle:\"index of\"",
-        "site:$s \"login\" | \"account\"",
-        "site:pastebin.com \"$s\""
+        {'title': 'Документи (PDF, DOC)', 'desc': 'Пошук відкритих звітів та документів', 'dork': 'site:$s ext:pdf OR ext:docx OR ext:txt'},
+        {'title': 'Бази даних (SQL)', 'desc': 'Пошук дампів баз даних', 'dork': 'site:$s ext:sql OR ext:db'},
+        {'title': 'Резервні копії (Backups)', 'desc': 'Пошук архівів сайтів', 'dork': 'site:$s ext:bak OR ext:zip OR ext:tar'},
+        {'title': 'Відкриті директорії', 'desc': 'Перегляд серверних папок (Index of)', 'dork': 'site:$s intitle:"index of"'},
+        {'title': 'Витоки паролів', 'desc': 'Пошук файлів зі згадкою паролів', 'dork': 'site:$s "password" ext:txt'},
+        {'title': 'Адмін-панелі', 'desc': 'Пошук точок входу для адміністраторів', 'dork': 'site:$s inurl:admin OR inurl:login'},
+        {'title': 'Згадки на Pastebin', 'desc': 'Пошук витоків домену на Pastebin', 'dork': 'site:pastebin.com "$s"'},
+        {'title': 'Конфіги (Config files)', 'desc': 'Пошук файлів конфігурації', 'dork': 'site:$s ext:xml OR ext:conf OR ext:cnf'},
       ];
     });
 
-    widget.onLog("Dorks для: $s");
+    widget.onLog("Dorks згенеровано для: $s");
 
     Future.delayed(const Duration(milliseconds: 50), () {
       for (var i = 0; i < _d.length; i++) {
@@ -436,7 +616,7 @@ class _DorksScreenState extends State<DorksScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('GOOGLE DORKS')),
       body: Column(children: [
-        Padding(padding: const EdgeInsets.all(16), child: TextField(controller: _t, decoration: const InputDecoration(labelText: 'ВВЕДІТЬ ДОМЕН'))),
+        Padding(padding: const EdgeInsets.all(16), child: TextField(controller: _t, decoration: const InputDecoration(labelText: 'ВВЕДІТЬ ДОМЕН (напр. target.com)'))),
         ElevatedButton(
           style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFD700), foregroundColor: Colors.black),
           onPressed: _gen, child: const Text('ГЕНЕРУВАТИ МАСИВ', style: TextStyle(fontWeight: FontWeight.bold))
@@ -447,6 +627,7 @@ class _DorksScreenState extends State<DorksScreen> {
             key: _listKey,
             initialItemCount: _d.length,
             itemBuilder: (context, index, animation) {
+              final item = _d[index];
               return SlideTransition(
                 position: animation.drive(Tween(begin: const Offset(1, 0), end: Offset.zero).chain(CurveTween(curve: Curves.easeOutQuart))),
                 child: FadeTransition(
@@ -455,12 +636,17 @@ class _DorksScreenState extends State<DorksScreen> {
                     color: Colors.white.withOpacity(0.05),
                     margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                     child: ListTile(
-                      title: Text(_d[index], style: const TextStyle(fontFamily: 'monospace', color: Colors.greenAccent)),
+                      title: Text(item['title']!, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                      subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text(item['desc']!, style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                        const SizedBox(height: 4),
+                        Text(item['dork']!, style: const TextStyle(fontFamily: 'monospace', color: Colors.greenAccent)),
+                      ]),
                       trailing: const Icon(Icons.copy, color: Colors.white24),
                       onTap: () {
-                        Clipboard.setData(ClipboardData(text: _d[index]));
+                        Clipboard.setData(ClipboardData(text: item['dork']!));
                         HapticFeedback.mediumImpact();
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: const Color(0xFF0057B7), content: Text('СКОПІЙОВАНО: ${_d[index]}'), duration: const Duration(seconds: 1)));
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(backgroundColor: const Color(0xFF0057B7), content: Text('СКОПІЙОВАНО: ${item['title']}'), duration: const Duration(seconds: 1)));
                       },
                     ),
                   ),
@@ -516,7 +702,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
   );
 }
 
-// --- EXIF SCREEN ---
+// --- ВИПРАВЛЕНИЙ EXIF SCREEN ---
 class ExifScreen extends StatefulWidget {
   final Function(String) onLog;
   const ExifScreen({super.key, required this.onLog});
@@ -533,13 +719,9 @@ class _ExifScreenState extends State<ExifScreen> {
     setState(() { _isLoading = true; _error = ''; _data.clear(); });
 
     try {
-      FilePickerResult? r = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        withData: true, 
-      );
-
-      if (r != null) {
-        final bytes = r.files.single.bytes ?? await File(r.files.single.path!).readAsBytes();
+      FilePickerResult? r = await FilePicker.platform.pickFiles(type: FileType.image);
+      if (r != null && r.files.single.path != null) {
+        final bytes = await File(r.files.single.path!).readAsBytes();
         final tags = await readExifFromBytes(bytes);
 
         if (tags.isEmpty) {
@@ -550,7 +732,7 @@ class _ExifScreenState extends State<ExifScreen> {
         widget.onLog("EXIF: Аналіз файлу ${r.files.single.name}");
       }
     } catch (e) {
-      _error = 'Помилка доступу до файлу: $e';
+      _error = 'Помилка доступу до файлу. Спробуйте інше фото.';
       widget.onLog("ERR: Помилка EXIF");
     }
 
@@ -568,7 +750,7 @@ class _ExifScreenState extends State<ExifScreen> {
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7), minimumSize: const Size(double.infinity, 50)),
               onPressed: _isLoading ? null : _pick,
-              child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('ОБРАТИ ФОТО', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('ОБРАТИ ФОТО З ГАЛЕРЕЇ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             ),
           ),
           if (_error.isNotEmpty) Padding(padding: const EdgeInsets.all(16), child: Text(_error, style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
