@@ -73,17 +73,13 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
     Timer(const Duration(milliseconds: 1800), () {
-      if (mounted) {
-        Navigator.pushReplacement(
-            context, MaterialPageRoute(builder: (_) => const MainScreen()));
-      }
+      if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainScreen()));
     });
   }
   @override
   Widget build(BuildContext context) => Scaffold(
       backgroundColor: Colors.black,
-      body: Image.asset('assets/splash.png',
-          fit: BoxFit.cover, width: double.infinity, height: double.infinity));
+      body: Image.asset('assets/splash.png', fit: BoxFit.cover, width: double.infinity, height: double.infinity));
 }
 
 // --- ГОЛОВНИЙ ЕКРАН ---
@@ -215,9 +211,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         setState(() => prompts.addAll(imported));
         _logAction("SYS: Імпортовано TXT (${imported.length} записів)");
         _save();
-      } catch (e) {
-        _logAction("ERR: Помилка імпорту");
-      }
+      } catch (e) { _logAction("ERR: Помилка імпорту"); }
     }
   }
 
@@ -244,7 +238,20 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
           TextField(controller: cCtrl, maxLines: 4, decoration: const InputDecoration(labelText: 'КОНТЕНТ {VAR}')),
         ]),
         actions: [
-          if (p != null) TextButton(onPressed: () { setState(() => prompts.remove(p)); _logAction("Видалено: ${p.title}"); _save(); Navigator.pop(ctx); }, child: const Text('ВИДАЛИТИ', style: TextStyle(color: Colors.red))),
+          if (p != null) TextButton(onPressed: () async { 
+            Navigator.pop(ctx);
+            // ЕФЕКТ REDACTED
+            String originalTitle = p.title;
+            setState(() {
+              p.title = '██████████';
+              p.content = '████████████████████████████';
+            });
+            HapticFeedback.heavyImpact();
+            await Future.delayed(const Duration(milliseconds: 600));
+            setState(() => prompts.remove(p)); 
+            _logAction("Видалено: $originalTitle"); 
+            _save(); 
+          }, child: const Text('ВИДАЛИТИ', style: TextStyle(color: Colors.red))),
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('СКАСУВАТИ', style: TextStyle(color: Colors.white54))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: uaBlue),
@@ -284,7 +291,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       appBar: AppBar(
         title: const Text('UKR_OSINT', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2)),
         actions: [
-          IconButton(icon: Icon(Icons.analytics, color: uaYellow), onPressed: _showSysInfo), // Гра видалена, тільки статистика
+          IconButton(icon: Icon(Icons.analytics, color: uaYellow), onPressed: _showSysInfo),
           IconButton(icon: const Icon(Icons.receipt_long, color: Colors.white70), onPressed: _showAuditLog),
           IconButton(icon: Icon(Icons.download, color: uaBlue), onPressed: _importFromTxt),
         ],
@@ -318,15 +325,9 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
                 key: ValueKey(p.id),
                 margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 color: Colors.white.withOpacity(0.05),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  side: BorderSide(color: p.isFavorite ? uaYellow.withOpacity(0.5) : Colors.transparent)
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: p.isFavorite ? uaYellow.withOpacity(0.5) : Colors.transparent)),
                 child: ListTile(
-                  leading: IconButton(
-                    icon: Icon(p.isFavorite ? Icons.star : Icons.star_border, color: p.isFavorite ? uaYellow : Colors.white24),
-                    onPressed: () { setState(() => p.isFavorite = !p.isFavorite); _save(); }
-                  ),
+                  leading: IconButton(icon: Icon(p.isFavorite ? Icons.star : Icons.star_border, color: p.isFavorite ? uaYellow : Colors.white24), onPressed: () { setState(() => p.isFavorite = !p.isFavorite); _save(); }),
                   title: Text(p.title, style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text(p.content, maxLines: 1, overflow: TextOverflow.ellipsis),
                   onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => GenScreen(p: p, onLog: _logAction))),
@@ -350,7 +351,11 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
     child: ListTile(
       title: Text(docs[i].name), leading: const Icon(Icons.file_copy, color: Colors.white54), 
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PDFViewerScreen(doc: docs[i]))),
-      trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.white24), onPressed: () {
+      trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.white24), onPressed: () async {
+        final doc = docs[i];
+        setState(() => doc.name = '██████████');
+        HapticFeedback.heavyImpact();
+        await Future.delayed(const Duration(milliseconds: 500));
         setState(() => docs.removeAt(i));
         _save();
       }),
@@ -365,13 +370,14 @@ class ToolsMenuScreen extends StatelessWidget {
   
   @override
   Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.only(top: 10),
+    padding: const EdgeInsets.only(top: 10, bottom: 20),
     children: [
       _t(context, 'ВАРІАНТИ НІКНЕЙМУ', 'Офлайн генерація логінів/пошт', Icons.psychology, NicknameGenScreen(onLog: onLog)),
       _t(context, 'DORKS', 'Кібер-конструктор Google запитів', Icons.travel_explore, DorksScreen(onLog: onLog)),
-      _t(context, 'МЕНЕДЖЕР ПАРОЛІВ', 'Захищений крипто-блокнот', Icons.lock_outline, PasswordManagerScreen(onLog: onLog)),
-      _t(context, 'СКАНЕР', 'Екстракція об\'єктів з тексту', Icons.radar, ScannerScreen(onLog: onLog)),
+      _t(context, 'СКАНЕР', 'Екстракція даних (TXT/Текст)', Icons.radar, ScannerScreen(onLog: onLog)),
       _t(context, 'EXIF', 'Аналіз метаданих фотографії', Icons.image_search, ExifScreen(onLog: onLog)),
+      _t(context, 'МЕНЕДЖЕР ПАРОЛІВ', 'Захищений крипто-блокнот', Icons.lock_outline, PasswordManagerScreen(onLog: onLog)),
+      _t(context, 'ТАЙМЛАЙН', 'Хронологія розслідування', Icons.timeline, TimelineScreen(onLog: onLog)),
     ]
   );
   
@@ -509,10 +515,7 @@ class _PasswordManagerScreenState extends State<PasswordManagerScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('СХОВИЩЕ ПАРОЛІВ'),
-        actions: [IconButton(icon: const Icon(Icons.key, color: Color(0xFFFFD700)), onPressed: _changeMaster)],
-      ),
+      appBar: AppBar(title: const Text('СХОВИЩЕ ПАРОЛІВ'), actions: [IconButton(icon: const Icon(Icons.key, color: Color(0xFFFFD700)), onPressed: _changeMaster)]),
       body: _vault.isEmpty 
         ? const Center(child: Text('Сховище порожнє', style: TextStyle(color: Colors.white54))) 
         : ListView.builder(itemCount: _vault.length, itemBuilder: (ctx, i) {
@@ -530,8 +533,17 @@ class _PasswordManagerScreenState extends State<PasswordManagerScreen> {
                         Clipboard.setData(ClipboardData(text: item['pwd']));
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Пароль скопійовано')));
                       }),
-                      IconButton(icon: const Icon(Icons.delete, color: Colors.redAccent), onPressed: () {
-                        setState(() => _vault.removeAt(i)); _saveVault();
+                      IconButton(icon: const Icon(Icons.delete, color: Colors.redAccent), onPressed: () async {
+                        // Ефект REDACTED
+                        setState(() {
+                          _vault[i]['res'] = '██████████';
+                          _vault[i]['log'] = '██████████';
+                          _vault[i]['pwd'] = '██████████';
+                        });
+                        HapticFeedback.heavyImpact();
+                        await Future.delayed(const Duration(milliseconds: 500));
+                        setState(() => _vault.removeAt(i));
+                        _saveVault();
                       }),
                     ]),
                   )
@@ -547,7 +559,8 @@ class _PasswordManagerScreenState extends State<PasswordManagerScreen> {
 // --- ВАРІАНТИ НІКНЕЙМУ ---
 class NicknameGenScreen extends StatefulWidget {
   final Function(String) onLog;
-  const NicknameGenScreen({super.key, required this.onLog});
+  final String? initialQuery;
+  const NicknameGenScreen({super.key, required this.onLog, this.initialQuery});
   @override
   State<NicknameGenScreen> createState() => _NicknameGenScreenState();
 }
@@ -555,6 +568,15 @@ class NicknameGenScreen extends StatefulWidget {
 class _NicknameGenScreenState extends State<NicknameGenScreen> {
   final _c = TextEditingController();
   List<String> _res = [];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialQuery != null) {
+      _c.text = widget.initialQuery!.replaceAll('@', '');
+      WidgetsBinding.instance.addPostFrameCallback((_) => _generate());
+    }
+  }
 
   void _generate() {
     String s = _c.text.trim().toLowerCase();
@@ -567,6 +589,7 @@ class _NicknameGenScreenState extends State<NicknameGenScreen> {
       ];
     });
     widget.onLog("Згенеровано нікнейми для: $s");
+    FocusScope.of(context).unfocus();
   }
 
   @override
@@ -599,7 +622,8 @@ class _NicknameGenScreenState extends State<NicknameGenScreen> {
 // --- DORKS SCREEN ---
 class DorksScreen extends StatefulWidget {
   final Function(String) onLog;
-  const DorksScreen({super.key, required this.onLog});
+  final String? initialQuery;
+  const DorksScreen({super.key, required this.onLog, this.initialQuery});
   @override
   State<DorksScreen> createState() => _DorksScreenState();
 }
@@ -608,6 +632,15 @@ class _DorksScreenState extends State<DorksScreen> {
   final _t = TextEditingController();
   List<Map<String, String>> _d = [];
   final GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialQuery != null) {
+      _t.text = widget.initialQuery!;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _gen());
+    }
+  }
 
   void _gen() {
     String s = _t.text.trim();
@@ -662,8 +695,7 @@ class _DorksScreenState extends State<DorksScreen> {
                 child: FadeTransition(
                   opacity: animation,
                   child: Card(
-                    color: Colors.white.withOpacity(0.05),
-                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    color: Colors.white.withOpacity(0.05), margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
                     child: ListTile(
                       title: Text(item['title']!, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
                       subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -689,7 +721,7 @@ class _DorksScreenState extends State<DorksScreen> {
   }
 }
 
-// --- СКАНЕР (ПОСИЛЕНО REGEX) ---
+// --- СКАНЕР (ТХТ І КРОС-ІНТЕГРАЦІЯ) ---
 class ScannerScreen extends StatefulWidget {
   final Function(String) onLog;
   const ScannerScreen({super.key, required this.onLog});
@@ -701,33 +733,62 @@ class _ScannerScreenState extends State<ScannerScreen> {
   final _c = TextEditingController(); 
   List<String> _r = [];
 
+  void _loadTxt() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['txt']);
+    if (result != null && result.files.single.path != null) {
+      try {
+        String content = await File(result.files.single.path!).readAsString();
+        setState(() => _c.text = content);
+        widget.onLog("Сканер: завантажено ${result.files.single.name}");
+        _scan();
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Помилка читання файлу')));
+      }
+    }
+  }
+
   void _scan() {
     String text = _c.text;
     if (text.isEmpty) return;
 
-    // Вдосконалені регулярні вирази
     final ips = RegExp(r'\b(?:\d{1,3}\.){3}\d{1,3}\b').allMatches(text).map((m) => "IP: ${m.group(0)}").toList();
     final ems = RegExp(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}').allMatches(text).map((m) => "EMAIL: ${m.group(0)}").toList();
-    
-    // Телефони (UA/RU та міжнародні формати)
     final phones = RegExp(r'(?:\+380|\+7|8)[ \-\(\)]?\d{2,3}[ \-\(\)]?\d{3}[ \-]?\d{2}[ \-]?\d{2}').allMatches(text).map((m) => "PHONE: ${m.group(0)}").toList();
-    
-    // Посилання на популярні соцмережі
     final links = RegExp(r'(?:https?:\/\/)?(?:www\.)?(?:t\.me|instagram\.com|facebook\.com|vk\.com|x\.com|twitter\.com|tiktok\.com|linkedin\.com)\/[a-zA-Z0-9_.-]+').allMatches(text).map((m) => "SOCIAL: ${m.group(0)}").toList();
-    
-    // Нікнейми (@username)
     final nicks = RegExp(r'(?:^|\s)(@[a-zA-Z0-9_]+)').allMatches(text).map((m) => "NICK: ${m.group(1)}").toList();
 
     setState(() => _r = [...ips, ...ems, ...phones, ...links, ...nicks]);
-    widget.onLog("Сканер: знайдено ${_r.length} артефактів");
+    widget.onLog("Сканер: знайдено ${_r.length} об'єктів");
     FocusScope.of(context).unfocus();
+  }
+
+  // КРОС-ІНТЕГРАЦІЯ
+  void _showCrossActions(String rawVal) {
+    String val = rawVal.split(': ').last.trim(); // Отримуємо чисте значення
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF0A152F),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => Wrap(
+        children: [
+          Padding(padding: const EdgeInsets.all(16), child: Text('ДІЯ ДЛЯ: $val', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFFFD700)))),
+          ListTile(leading: const Icon(Icons.copy, color: Colors.white), title: const Text('Копіювати'), onTap: () { Clipboard.setData(ClipboardData(text: val)); Navigator.pop(ctx); }),
+          ListTile(leading: const Icon(Icons.travel_explore, color: Colors.greenAccent), title: const Text('Відправити в Dorks'), onTap: () { Navigator.pop(ctx); Navigator.push(context, MaterialPageRoute(builder: (_) => DorksScreen(onLog: widget.onLog, initialQuery: val))); }),
+          ListTile(leading: const Icon(Icons.psychology, color: Color(0xFF0057B7)), title: const Text('Генерувати нікнейми'), onTap: () { Navigator.pop(ctx); Navigator.push(context, MaterialPageRoute(builder: (_) => NicknameGenScreen(onLog: widget.onLog, initialQuery: val))); }),
+          const SizedBox(height: 20),
+        ],
+      )
+    );
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('ЕКСТРАКТОР АРТЕФАКТІВ')), 
+    appBar: AppBar(
+      title: const Text('ЕКСТРАКТОР АРТЕФАКТІВ'),
+      actions: [IconButton(icon: const Icon(Icons.file_upload, color: Color(0xFFFFD700)), onPressed: _loadTxt, tooltip: 'Завантажити TXT')],
+    ), 
     body: Column(children: [
-      Padding(padding: const EdgeInsets.all(16), child: TextField(controller: _c, maxLines: 5, decoration: const InputDecoration(labelText: 'Вставте текст (логи, дампи, статті)'))), 
+      Padding(padding: const EdgeInsets.all(16), child: TextField(controller: _c, maxLines: 5, decoration: const InputDecoration(labelText: 'Вставте текст або завантажте TXT файл'))), 
       ElevatedButton(
         style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7), minimumSize: const Size(double.infinity, 50)),
         onPressed: _scan, child: const Text('СКАЙНУВАТИ ТЕКСТ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
@@ -737,11 +798,9 @@ class _ScannerScreenState extends State<ScannerScreen> {
         color: Colors.white.withOpacity(0.05), margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         child: ListTile(
           title: Text(_r[i], style: const TextStyle(fontFamily: 'monospace', color: Colors.greenAccent)),
-          trailing: const Icon(Icons.copy, size: 18, color: Colors.white54),
-          onTap: () {
-            Clipboard.setData(ClipboardData(text: _r[i].split(': ').last)); // Копіюємо тільки саме значення
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Скопійовано')));
-          }
+          subtitle: const Text('Натисніть для дій', style: TextStyle(fontSize: 10, color: Colors.white24)),
+          trailing: const Icon(Icons.touch_app, size: 18, color: Colors.white54),
+          onTap: () => _showCrossActions(_r[i]),
         )
       )))
     ])
@@ -826,7 +885,93 @@ class _ExifScreenState extends State<ExifScreen> {
   }
 }
 
-// --- GEN SCREEN З ТАКТИЧНИМ ПІДСИЛЕННЯМ ---
+// --- НОВИЙ ІНСТРУМЕНТ: ТАЙМЛАЙН ---
+class TimelineScreen extends StatefulWidget {
+  final Function(String) onLog;
+  const TimelineScreen({super.key, required this.onLog});
+  @override
+  State<TimelineScreen> createState() => _TimelineScreenState();
+}
+
+class _TimelineScreenState extends State<TimelineScreen> {
+  List<Map<String, dynamic>> _events = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadEvents();
+  }
+
+  void _loadEvents() async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = prefs.getString('timeline_data');
+    if (data != null) {
+      setState(() => _events = List<Map<String, dynamic>>.from(json.decode(data)));
+    }
+  }
+
+  void _saveEvents() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('timeline_data', json.encode(_events));
+  }
+
+  void _addEvent() {
+    final dC = TextEditingController(), tC = TextEditingController();
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      backgroundColor: const Color(0xFF0A152F), title: const Text('НОВА ПОДІЯ'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        TextField(controller: dC, decoration: const InputDecoration(labelText: 'Дата / Час (напр. 24.02.2026)')),
+        const SizedBox(height: 10),
+        TextField(controller: tC, decoration: const InputDecoration(labelText: 'Подія / Опис')),
+      ]),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('СКАСУВАТИ')),
+        ElevatedButton(onPressed: () {
+          if (dC.text.isNotEmpty && tC.text.isNotEmpty) {
+            setState(() => _events.add({'date': dC.text, 'title': tC.text}));
+            _saveEvents();
+            widget.onLog("Таймлайн: додано подію");
+          }
+          Navigator.pop(ctx);
+        }, child: const Text('ДОДАТИ'))
+      ],
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('ХРОНОЛОГІЯ')),
+      body: _events.isEmpty 
+        ? const Center(child: Text('Таймлайн порожній', style: TextStyle(color: Colors.white54)))
+        : ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: _events.length,
+            itemBuilder: (ctx, i) {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Column(children: [
+                    Container(width: 12, height: 12, decoration: const BoxDecoration(shape: BoxShape.circle, color: Color(0xFFFFD700))),
+                    if (i != _events.length - 1) Container(width: 2, height: 60, color: Colors.white24),
+                  ]),
+                  const SizedBox(width: 16),
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(_events[i]['date'], style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0057B7))),
+                    const SizedBox(height: 4),
+                    Text(_events[i]['title'], style: const TextStyle(color: Colors.white)),
+                    const SizedBox(height: 20), // Spacing
+                  ]))
+                ],
+              );
+            },
+          ),
+      floatingActionButton: FloatingActionButton(backgroundColor: const Color(0xFFFFD700), onPressed: _addEvent, child: const Icon(Icons.add, color: Colors.black)),
+    );
+  }
+}
+
+// --- GEN SCREEN З ТАКТИЧНИМ ПІДСИЛЕННЯМ ТА АНІМАЦІЄЮ ДРУКУ ---
 class GenScreen extends StatefulWidget {
   final Prompt p;
   final Function(String) onLog;
@@ -837,149 +982,104 @@ class GenScreen extends StatefulWidget {
 
 class _GenScreenState extends State<GenScreen> {
   final Map<String, TextEditingController> _ctrls = {};
-  String _baseCompiled = '';
   String _finalRes = '';
+  String _displayedText = '';
   bool _isCompiled = false;
+  Timer? _typeTimer;
   
-  // Розширена база технік підсилення
   final List<PromptEnhancer> _enhancers = [
-    PromptEnhancer(
-      name: 'CoT (Chain of Thought)', 
-      desc: 'Змушує ШІ думати покроково.', 
-      bestWith: 'Складні логічні завдання, пошук прихованих зв\'язків.', 
-      warning: 'Відповідь буде значно довшою.', 
-      payload: 'Пояснюй свій хід думок крок за кроком (Step-by-step) перед тим, як надати фінальну відповідь.'
-    ),
-    PromptEnhancer(
-      name: 'ToT (Tree of Thoughts)', 
-      desc: 'Генерація та вибір гіпотез.', 
-      bestWith: 'Аналітика, коли є кілька підозрюваних або версій.', 
-      warning: 'Потребує багато токенів. Не сумісно з CoT.', 
-      payload: 'Розглянь мінімум 3 різні гіпотези. Проаналізуй кожну з них окремо, і наприкінці обери найбільш вірогідну.'
-    ),
-    PromptEnhancer(
-      name: 'Експертна Роль (Persona)', 
-      desc: 'Задає професійний тон.', 
-      bestWith: 'Будь-які OSINT запити.', 
-      warning: 'Немає.', 
-      payload: 'Дій як старший аналітик розвідки з 10-річним досвідом. Твоя відповідь має бути максимально професійною, без зайвої "води".'
-    ),
-    PromptEnhancer(
-      name: 'BLUF (Звіт Розвідки)', 
-      desc: 'Головний висновок на початку.', 
-      bestWith: 'Формування звітів для керівництва.', 
-      warning: 'Може скоротити детальний опис.', 
-      payload: 'Використовуй формат BLUF (Bottom Line Up Front). Почни з головного висновку (1-2 речення), а потім наводь аргументи маркованим списком.'
-    ),
-    PromptEnhancer(
-      name: 'Саморефлексія (Критик)', 
-      desc: 'ШІ шукає власні помилки.', 
-      bestWith: 'Фактчекінг, пошук логічних дір.', 
-      warning: 'Витрачає більше часу на генерацію.', 
-      payload: 'Після формування відповіді, критично оціни її. Знайди можливі логічні помилки, упередження або брак доказів, і додай абзац з виправленнями.'
-    ),
-    PromptEnhancer(
-      name: 'Жорстке Форматування (JSON)', 
-      desc: 'Видача результату у вигляді коду.', 
-      bestWith: 'Екстракція даних для бази (Монго, SQL).', 
-      warning: 'Конфліктує з CoT (текст може поламати код).', 
-      payload: 'Поверни результат ВИКЛЮЧНО у форматі валідного JSON. Не пиши жодного тексту до або після JSON блоку.'
-    ),
+    PromptEnhancer(name: 'CoT (Chain of Thought)', desc: 'Змушує ШІ думати покроково.', bestWith: 'Складні логічні завдання.', warning: 'Відповідь буде довгою.', payload: 'Пояснюй свій хід думок крок за кроком (Step-by-step).'),
+    PromptEnhancer(name: 'ToT (Tree of Thoughts)', desc: 'Генерація та вибір гіпотез.', bestWith: 'Аналітика.', warning: 'Не сумісно з CoT.', payload: 'Розглянь мінімум 3 гіпотези та обери найбільш вірогідну.'),
+    PromptEnhancer(name: 'Експертна Роль', desc: 'Задає професійний тон.', bestWith: 'OSINT запити.', warning: 'Немає.', payload: 'Дій як старший аналітик розвідки.'),
+    PromptEnhancer(name: 'BLUF (Звіт Розвідки)', desc: 'Головний висновок на початку.', bestWith: 'Звіти для керівництва.', warning: 'Скорочує опис.', payload: 'Використовуй формат BLUF (Bottom Line Up Front).'),
+    PromptEnhancer(name: 'Саморефлексія', desc: 'ШІ шукає власні помилки.', bestWith: 'Фактчекінг.', warning: 'Більше часу на генерацію.', payload: 'Критично оціни відповідь. Знайди можливі помилки.'),
+    PromptEnhancer(name: 'Жорстке Форматування', desc: 'Видача результату кодом.', bestWith: 'Екстракція для баз.', warning: 'Тільки JSON.', payload: 'Поверни результат ВИКЛЮЧНО у форматі валідного JSON.'),
   ];
 
   @override
   void initState() {
     super.initState();
     final reg = RegExp(r'\{([^}]+)\}');
-    for (var m in reg.allMatches(widget.p.content)) {
-      _ctrls[m.group(1)!] = TextEditingController();
-    }
+    for (var m in reg.allMatches(widget.p.content)) { _ctrls[m.group(1)!] = TextEditingController(); }
   }
 
-  void _compileBase() {
-    String t = widget.p.content;
-    _ctrls.forEach((k,v) => t = t.replaceAll('{$k}', v.text.isEmpty ? '{$k}' : v.text));
-    setState(() {
-      _baseCompiled = t;
-      _isCompiled = true;
-    });
-    _updateFinalRes();
-    widget.onLog("Згенеровано базовий промпт: ${widget.p.title}");
-    FocusScope.of(context).unfocus();
+  @override
+  void dispose() {
+    _typeTimer?.cancel();
+    super.dispose();
   }
 
-  void _updateFinalRes() {
-    if (!_isCompiled) return;
-    String r = _baseCompiled;
+  void _compileAndType() {
+    String base = widget.p.content;
+    _ctrls.forEach((k,v) => base = base.replaceAll('{$k}', v.text.isEmpty ? '{$k}' : v.text));
     
     final selected = _enhancers.where((e) => e.isSelected).toList();
     if (selected.isNotEmpty) {
-      r += "\n\n### СИСТЕМНІ ІНСТРУКЦІЇ:\n";
-      for (var e in selected) {
-        r += "- ${e.payload}\n";
-      }
+      base += "\n\n### СИСТЕМНІ ІНСТРУКЦІЇ:\n";
+      for (var e in selected) { base += "- ${e.payload}\n"; }
     }
-    setState(() => _finalRes = r);
+    
+    setState(() { _finalRes = base; _isCompiled = true; _displayedText = ''; });
+    widget.onLog("Компіляція: ${widget.p.title}");
+    FocusScope.of(context).unfocus();
+
+    // Ефект друкарської машинки
+    _typeTimer?.cancel();
+    int charIndex = 0;
+    _typeTimer = Timer.periodic(const Duration(milliseconds: 15), (t) {
+      if (charIndex < _finalRes.length) {
+        setState(() {
+          charIndex++;
+          _displayedText = _finalRes.substring(0, charIndex) + (charIndex % 2 == 0 ? '_' : '');
+        });
+      } else {
+        setState(() => _displayedText = _finalRes);
+        t.cancel();
+      }
+    });
   }
 
   void _showEnhanceMenu() {
     showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: const Color(0xFF0A152F),
+      context: context, isScrollControlled: true, backgroundColor: const Color(0xFF0A152F),
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) {
-          return Container(
-            padding: const EdgeInsets.only(top: 20, left: 16, right: 16, bottom: 40),
-            height: MediaQuery.of(context).size.height * 0.75,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('ТАКТИЧНЕ ПІДСИЛЕННЯ (PROMPT ENGINEERING)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFFFFD700))),
-                const SizedBox(height: 10),
-                const Text('Оберіть техніки ін\'єкції контексту. Вони будуть безпечно додані в кінець вашого промпту.', style: TextStyle(color: Colors.white54, fontSize: 12)),
-                const SizedBox(height: 10),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: _enhancers.length,
-                    itemBuilder: (ctx, i) {
-                      final e = _enhancers[i];
-                      return Card(
-                        color: Colors.white.withOpacity(0.05),
-                        margin: const EdgeInsets.only(bottom: 10),
-                        child: CheckboxListTile(
-                          activeColor: const Color(0xFF0057B7),
-                          checkColor: Colors.white,
-                          title: Text(e.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                          subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text(e.desc, style: const TextStyle(fontSize: 12)),
-                            const SizedBox(height: 4),
-                            Text('КРАЩЕ ДЛЯ: ${e.bestWith}', style: const TextStyle(fontSize: 10, color: Colors.greenAccent)),
-                            Text('УВАГА: ${e.warning}', style: const TextStyle(fontSize: 10, color: Colors.orangeAccent)),
-                          ]),
-                          value: e.isSelected,
-                          onChanged: (val) {
-                            setModalState(() => e.isSelected = val!);
-                            _updateFinalRes();
-                          },
-                        ),
-                      );
-                    },
-                  ),
+        builder: (ctx, setModalState) => Container(
+          padding: const EdgeInsets.only(top: 20, left: 16, right: 16, bottom: 40),
+          height: MediaQuery.of(context).size.height * 0.75,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('ТАКТИЧНЕ ПІДСИЛЕННЯ (PROMPT ENGINEERING)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Color(0xFFFFD700))),
+              const SizedBox(height: 10),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _enhancers.length,
+                  itemBuilder: (ctx, i) {
+                    final e = _enhancers[i];
+                    return Card(
+                      color: Colors.white.withOpacity(0.05), margin: const EdgeInsets.only(bottom: 10),
+                      child: CheckboxListTile(
+                        activeColor: const Color(0xFF0057B7), checkColor: Colors.white,
+                        title: Text(e.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                          Text(e.desc, style: const TextStyle(fontSize: 12)),
+                          Text('КРАЩЕ ДЛЯ: ${e.bestWith}', style: const TextStyle(fontSize: 10, color: Colors.greenAccent)),
+                        ]),
+                        value: e.isSelected,
+                        onChanged: (val) { setModalState(() => e.isSelected = val!); if (_isCompiled) _compileAndType(); },
+                      ),
+                    );
+                  },
                 ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7), minimumSize: const Size(double.infinity, 50)),
-                  onPressed: () {
-                    widget.onLog("SYS: Застосовано підсилення промпту");
-                    Navigator.pop(ctx);
-                  }, 
-                  child: const Text('АПЛАЙ (ЗАСТОСУВАТИ)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
-                )
-              ],
-            ),
-          );
-        }
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7), minimumSize: const Size(double.infinity, 50)),
+                onPressed: () => Navigator.pop(ctx), child: const Text('АПЛАЙ (ЗАСТОСУВАТИ)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+              )
+            ],
+          ),
+        )
       ),
     );
   }
@@ -991,52 +1091,30 @@ class _GenScreenState extends State<GenScreen> {
       padding: const EdgeInsets.all(16),
       child: Column(children: [
         if (!_isCompiled) ...[
-          ..._ctrls.keys.map((k) => Padding(
-            padding: const EdgeInsets.only(bottom: 8.0),
-            child: TextField(controller: _ctrls[k], decoration: InputDecoration(labelText: k)),
-          )),
+          ..._ctrls.keys.map((k) => Padding(padding: const EdgeInsets.only(bottom: 8.0), child: TextField(controller: _ctrls[k], decoration: InputDecoration(labelText: k)))),
           const SizedBox(height: 10),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7), minimumSize: const Size(double.infinity, 50)),
-            onPressed: _compileBase,
-            child: const Text('КОМПІЛЮВАТИ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+            onPressed: _compileAndType, child: const Text('КОМПІЛЮВАТИ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
           ),
         ] else ...[
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0A152F), side: const BorderSide(color: Color(0xFFFFD700)), minimumSize: const Size(double.infinity, 50)),
-            onPressed: _showEnhanceMenu,
-            icon: const Icon(Icons.flash_on, color: Color(0xFFFFD700)),
-            label: const Text('ТАКТИЧНЕ ПІДСИЛЕННЯ ПРОМПТУ', style: TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.bold))
+            onPressed: _showEnhanceMenu, icon: const Icon(Icons.flash_on, color: Color(0xFFFFD700)), label: const Text('ТАКТИЧНЕ ПІДСИЛЕННЯ ПРОМПТУ', style: TextStyle(color: Color(0xFFFFD700), fontWeight: FontWeight.bold))
           ),
           const SizedBox(height: 10),
           Expanded(child: Container(
             width: double.infinity, padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(8), border: Border.all(color: _enhancers.any((e) => e.isSelected) ? const Color(0xFF0057B7) : Colors.transparent)),
-            child: SingleChildScrollView(child: SelectableText(_finalRes.isEmpty ? _baseCompiled : _finalRes, style: const TextStyle(fontFamily: 'monospace')))
+            child: SingleChildScrollView(child: SelectableText(_displayedText, style: const TextStyle(fontFamily: 'monospace', color: Colors.greenAccent)))
           )),
           const SizedBox(height: 10),
           Row(children: [
-            Expanded(child: ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _isCompiled = false;
-                  for (var e in _enhancers) { e.isSelected = false; }
-                });
-              }, child: const Text('РЕСЕТ')
-            )),
+            Expanded(child: ElevatedButton(onPressed: () { setState(() { _isCompiled = false; for (var e in _enhancers) { e.isSelected = false; } }); _typeTimer?.cancel(); }, child: const Text('РЕСЕТ'))),
             const SizedBox(width: 10),
-            Expanded(child: ElevatedButton(
-              onPressed: () {
-                Clipboard.setData(ClipboardData(text: _finalRes));
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Скопійовано')));
-              }, child: const Text('COPY')
-            )),
+            Expanded(child: ElevatedButton(onPressed: () { Clipboard.setData(ClipboardData(text: _finalRes)); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Скопійовано'))); }, child: const Text('COPY'))),
             const SizedBox(width: 10),
-            Expanded(child: ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFD700)),
-              onPressed: () => Share.share(_finalRes),
-              child: const Text('SHARE', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold))
-            ))
+            Expanded(child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFD700)), onPressed: () => Share.share(_finalRes), child: const Text('SHARE', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold))))
           ])
         ]
       ])
