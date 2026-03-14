@@ -240,12 +240,8 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
         actions: [
           if (p != null) TextButton(onPressed: () async { 
             Navigator.pop(ctx);
-            // ЕФЕКТ REDACTED
             String originalTitle = p.title;
-            setState(() {
-              p.title = '██████████';
-              p.content = '████████████████████████████';
-            });
+            setState(() { p.title = '██████████'; p.content = '████████████████████████████'; });
             HapticFeedback.heavyImpact();
             await Future.delayed(const Duration(milliseconds: 600));
             setState(() => prompts.remove(p)); 
@@ -291,7 +287,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       appBar: AppBar(
         title: const Text('UKR_OSINT', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2)),
         actions: [
-          IconButton(icon: Icon(Icons.analytics, color: uaYellow), onPressed: _showSysInfo),
+          IconButton(icon: Icon(Icons.analytics, color: uaYellow), onPressed: _showSysInfo), 
           IconButton(icon: const Icon(Icons.receipt_long, color: Colors.white70), onPressed: _showAuditLog),
           IconButton(icon: Icon(Icons.download, color: uaBlue), onPressed: _importFromTxt),
         ],
@@ -374,9 +370,9 @@ class ToolsMenuScreen extends StatelessWidget {
     children: [
       _t(context, 'ВАРІАНТИ НІКНЕЙМУ', 'Офлайн генерація логінів/пошт', Icons.psychology, NicknameGenScreen(onLog: onLog)),
       _t(context, 'DORKS', 'Кібер-конструктор Google запитів', Icons.travel_explore, DorksScreen(onLog: onLog)),
-      _t(context, 'СКАНЕР', 'Екстракція даних (TXT/Текст)', Icons.radar, ScannerScreen(onLog: onLog)),
-      _t(context, 'EXIF', 'Аналіз метаданих фотографії', Icons.image_search, ExifScreen(onLog: onLog)),
       _t(context, 'МЕНЕДЖЕР ПАРОЛІВ', 'Захищений крипто-блокнот', Icons.lock_outline, PasswordManagerScreen(onLog: onLog)),
+      _t(context, 'СКАНЕР', 'Екстракція об\'єктів з тексту або DOC/TXT', Icons.radar, ScannerScreen(onLog: onLog)),
+      _t(context, 'EXIF', 'Аналіз метаданих фотографії', Icons.image_search, ExifScreen(onLog: onLog)),
       _t(context, 'ТАЙМЛАЙН', 'Хронологія розслідування', Icons.timeline, TimelineScreen(onLog: onLog)),
     ]
   );
@@ -534,12 +530,7 @@ class _PasswordManagerScreenState extends State<PasswordManagerScreen> {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Пароль скопійовано')));
                       }),
                       IconButton(icon: const Icon(Icons.delete, color: Colors.redAccent), onPressed: () async {
-                        // Ефект REDACTED
-                        setState(() {
-                          _vault[i]['res'] = '██████████';
-                          _vault[i]['log'] = '██████████';
-                          _vault[i]['pwd'] = '██████████';
-                        });
+                        setState(() { _vault[i]['res'] = '██████████'; _vault[i]['log'] = '██████████'; _vault[i]['pwd'] = '██████████'; });
                         HapticFeedback.heavyImpact();
                         await Future.delayed(const Duration(milliseconds: 500));
                         setState(() => _vault.removeAt(i));
@@ -619,7 +610,7 @@ class _NicknameGenScreenState extends State<NicknameGenScreen> {
   );
 }
 
-// --- DORKS SCREEN ---
+// --- DORKS SCREEN (РОЗШИРЕНИЙ) ---
 class DorksScreen extends StatefulWidget {
   final Function(String) onLog;
   final String? initialQuery;
@@ -652,14 +643,17 @@ class _DorksScreenState extends State<DorksScreen> {
 
     setState(() {
       _d = [
-        {'title': 'Документи (PDF, DOC)', 'desc': 'Пошук відкритих звітів та документів', 'dork': 'site:$s ext:pdf OR ext:docx OR ext:txt'},
-        {'title': 'Бази даних (SQL)', 'desc': 'Пошук дампів баз даних', 'dork': 'site:$s ext:sql OR ext:db'},
-        {'title': 'Резервні копії (Backups)', 'desc': 'Пошук архівів сайтів', 'dork': 'site:$s ext:bak OR ext:zip OR ext:tar'},
-        {'title': 'Відкриті директорії', 'desc': 'Перегляд серверних папок (Index of)', 'dork': 'site:$s intitle:"index of"'},
-        {'title': 'Витоки паролів', 'desc': 'Пошук файлів зі згадкою паролів', 'dork': 'site:$s "password" ext:txt'},
-        {'title': 'Адмін-панелі', 'desc': 'Пошук точок входу для адміністраторів', 'dork': 'site:$s inurl:admin OR inurl:login'},
-        {'title': 'Згадки на Pastebin', 'desc': 'Пошук витоків домену на Pastebin', 'dork': 'site:pastebin.com "$s"'},
-        {'title': 'Конфіги (Config files)', 'desc': 'Пошук файлів конфігурації', 'dork': 'site:$s ext:xml OR ext:conf OR ext:cnf'},
+        {'title': 'Камери (CCTV)', 'desc': 'Пошук відкритих IP-камер', 'dork': 'site:$s inurl:view/view.shtml'},
+        {'title': 'Документи (PDF, DOC)', 'desc': 'Відкриті звіти та документи', 'dork': 'site:$s ext:pdf OR ext:docx OR ext:txt'},
+        {'title': 'Бази даних (SQL)', 'desc': 'Дампи баз даних', 'dork': 'site:$s ext:sql OR ext:db'},
+        {'title': 'Резервні копії (Backups)', 'desc': 'Архіви сайтів', 'dork': 'site:$s ext:bak OR ext:zip OR ext:tar'},
+        {'title': 'Відкриті директорії', 'desc': 'Серверні папки (Index of)', 'dork': 'site:$s intitle:"index of"'},
+        {'title': 'Витоки паролів', 'desc': 'Файли зі згадкою паролів', 'dork': 'site:$s "password" ext:txt'},
+        {'title': 'Адмін-панелі', 'desc': 'Точки входу для адміністраторів', 'dork': 'site:$s inurl:admin OR inurl:login'},
+        {'title': 'Конфіги (Config)', 'desc': 'Файли конфігурації сервера', 'dork': 'site:$s ext:xml OR ext:conf OR ext:env'},
+        {'title': 'Співробітники на LinkedIn', 'desc': 'Пошук профілів працівників', 'dork': 'site:linkedin.com/in "$s"'},
+        {'title': 'Витоки коду (GitHub)', 'desc': 'Згадки домену в чужому коді', 'dork': 'site:github.com "$s"'},
+        {'title': 'Приховані API', 'desc': 'Пошук відкритих API ендпоінтів', 'dork': 'site:$s inurl:api'},
       ];
     });
 
@@ -721,7 +715,7 @@ class _DorksScreenState extends State<DorksScreen> {
   }
 }
 
-// --- СКАНЕР (ТХТ І КРОС-ІНТЕГРАЦІЯ) ---
+// --- СКАНЕР (З ІМПОРТОМ DOCX ХАКОМ ТА ПЕРЕХРЕСНИМ МЕНЮ) ---
 class ScannerScreen extends StatefulWidget {
   final Function(String) onLog;
   const ScannerScreen({super.key, required this.onLog});
@@ -734,15 +728,31 @@ class _ScannerScreenState extends State<ScannerScreen> {
   List<String> _r = [];
 
   void _loadTxt() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['txt']);
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.custom, 
+      allowedExtensions: ['txt', 'doc', 'docx', 'csv', 'log']
+    );
+    
     if (result != null && result.files.single.path != null) {
       try {
-        String content = await File(result.files.single.path!).readAsString();
+        final file = File(result.files.single.path!);
+        String content = '';
+        final ext = result.files.single.extension?.toLowerCase();
+        
+        if (ext == 'txt' || ext == 'csv' || ext == 'log') {
+          content = await file.readAsString();
+        } else {
+          // OSINT ХАК: Читаємо бінарник (doc/pdf) і витягуємо всі друковані символи
+          final bytes = await file.readAsBytes();
+          final chars = bytes.where((b) => (b >= 32 && b <= 126) || b == 10 || b == 13).toList();
+          content = String.fromCharCodes(chars);
+        }
+        
         setState(() => _c.text = content);
         widget.onLog("Сканер: завантажено ${result.files.single.name}");
         _scan();
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Помилка читання файлу')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Помилка читання: $e')));
       }
     }
   }
@@ -762,9 +772,8 @@ class _ScannerScreenState extends State<ScannerScreen> {
     FocusScope.of(context).unfocus();
   }
 
-  // КРОС-ІНТЕГРАЦІЯ
   void _showCrossActions(String rawVal) {
-    String val = rawVal.split(': ').last.trim(); // Отримуємо чисте значення
+    String val = rawVal.split(': ').last.trim();
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF0A152F),
@@ -772,7 +781,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       builder: (ctx) => Wrap(
         children: [
           Padding(padding: const EdgeInsets.all(16), child: Text('ДІЯ ДЛЯ: $val', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFFFD700)))),
-          ListTile(leading: const Icon(Icons.copy, color: Colors.white), title: const Text('Копіювати'), onTap: () { Clipboard.setData(ClipboardData(text: val)); Navigator.pop(ctx); }),
+          ListTile(leading: const Icon(Icons.copy, color: Colors.white), title: const Text('Копіювати'), onTap: () { Clipboard.setData(ClipboardData(text: val)); Navigator.pop(ctx); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Скопійовано'))); }),
           ListTile(leading: const Icon(Icons.travel_explore, color: Colors.greenAccent), title: const Text('Відправити в Dorks'), onTap: () { Navigator.pop(ctx); Navigator.push(context, MaterialPageRoute(builder: (_) => DorksScreen(onLog: widget.onLog, initialQuery: val))); }),
           ListTile(leading: const Icon(Icons.psychology, color: Color(0xFF0057B7)), title: const Text('Генерувати нікнейми'), onTap: () { Navigator.pop(ctx); Navigator.push(context, MaterialPageRoute(builder: (_) => NicknameGenScreen(onLog: widget.onLog, initialQuery: val))); }),
           const SizedBox(height: 20),
@@ -785,10 +794,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: const Text('ЕКСТРАКТОР АРТЕФАКТІВ'),
-      actions: [IconButton(icon: const Icon(Icons.file_upload, color: Color(0xFFFFD700)), onPressed: _loadTxt, tooltip: 'Завантажити TXT')],
+      actions: [IconButton(icon: const Icon(Icons.file_upload, color: Color(0xFFFFD700)), onPressed: _loadTxt, tooltip: 'Завантажити TXT/DOC')],
     ), 
     body: Column(children: [
-      Padding(padding: const EdgeInsets.all(16), child: TextField(controller: _c, maxLines: 5, decoration: const InputDecoration(labelText: 'Вставте текст або завантажте TXT файл'))), 
+      Padding(padding: const EdgeInsets.all(16), child: TextField(controller: _c, maxLines: 5, decoration: const InputDecoration(labelText: 'Вставте текст або завантажте файл'))), 
       ElevatedButton(
         style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7), minimumSize: const Size(double.infinity, 50)),
         onPressed: _scan, child: const Text('СКАЙНУВАТИ ТЕКСТ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
@@ -798,9 +807,11 @@ class _ScannerScreenState extends State<ScannerScreen> {
         color: Colors.white.withOpacity(0.05), margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         child: ListTile(
           title: Text(_r[i], style: const TextStyle(fontFamily: 'monospace', color: Colors.greenAccent)),
-          subtitle: const Text('Натисніть для дій', style: TextStyle(fontSize: 10, color: Colors.white24)),
-          trailing: const Icon(Icons.touch_app, size: 18, color: Colors.white54),
-          onTap: () => _showCrossActions(_r[i]),
+          onTap: () {
+            Clipboard.setData(ClipboardData(text: _r[i].split(': ').last.trim()));
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Скопійовано')));
+          },
+          trailing: IconButton(icon: const Icon(Icons.more_vert, color: Colors.white54), onPressed: () => _showCrossActions(_r[i])),
         )
       )))
     ])
@@ -885,7 +896,7 @@ class _ExifScreenState extends State<ExifScreen> {
   }
 }
 
-// --- НОВИЙ ІНСТРУМЕНТ: ТАЙМЛАЙН ---
+// --- ТАЙМЛАЙН ---
 class TimelineScreen extends StatefulWidget {
   final Function(String) onLog;
   const TimelineScreen({super.key, required this.onLog});
@@ -960,7 +971,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
                     Text(_events[i]['date'], style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0057B7))),
                     const SizedBox(height: 4),
                     Text(_events[i]['title'], style: const TextStyle(color: Colors.white)),
-                    const SizedBox(height: 20), // Spacing
+                    const SizedBox(height: 20),
                   ]))
                 ],
               );
@@ -971,7 +982,7 @@ class _TimelineScreenState extends State<TimelineScreen> {
   }
 }
 
-// --- GEN SCREEN З ТАКТИЧНИМ ПІДСИЛЕННЯМ ТА АНІМАЦІЄЮ ДРУКУ ---
+// --- GEN SCREEN З ТУРБО-АНІМАЦІЄЮ ТА КОЛЬОРОВИМ КОДОМ ---
 class GenScreen extends StatefulWidget {
   final Prompt p;
   final Function(String) onLog;
@@ -982,18 +993,20 @@ class GenScreen extends StatefulWidget {
 
 class _GenScreenState extends State<GenScreen> {
   final Map<String, TextEditingController> _ctrls = {};
-  String _finalRes = '';
-  String _displayedText = '';
   bool _isCompiled = false;
+  
+  List<TextSpan> _fullSpans = [];
+  int _totalChars = 0;
+  int _currentChar = 0;
   Timer? _typeTimer;
   
   final List<PromptEnhancer> _enhancers = [
-    PromptEnhancer(name: 'CoT (Chain of Thought)', desc: 'Змушує ШІ думати покроково.', bestWith: 'Складні логічні завдання.', warning: 'Відповідь буде довгою.', payload: 'Пояснюй свій хід думок крок за кроком (Step-by-step).'),
-    PromptEnhancer(name: 'ToT (Tree of Thoughts)', desc: 'Генерація та вибір гіпотез.', bestWith: 'Аналітика.', warning: 'Не сумісно з CoT.', payload: 'Розглянь мінімум 3 гіпотези та обери найбільш вірогідну.'),
+    PromptEnhancer(name: 'CoT (Chain of Thought)', desc: 'Покрокове мислення.', bestWith: 'Складні завдання.', warning: 'Довга відповідь.', payload: 'Пояснюй хід думок крок за кроком (Step-by-step).'),
+    PromptEnhancer(name: 'ToT (Tree of Thoughts)', desc: 'Генерація гіпотез.', bestWith: 'Аналітика.', warning: 'Не сумісно з CoT.', payload: 'Розглянь 3 гіпотези та обери найбільш вірогідну.'),
     PromptEnhancer(name: 'Експертна Роль', desc: 'Задає професійний тон.', bestWith: 'OSINT запити.', warning: 'Немає.', payload: 'Дій як старший аналітик розвідки.'),
-    PromptEnhancer(name: 'BLUF (Звіт Розвідки)', desc: 'Головний висновок на початку.', bestWith: 'Звіти для керівництва.', warning: 'Скорочує опис.', payload: 'Використовуй формат BLUF (Bottom Line Up Front).'),
-    PromptEnhancer(name: 'Саморефлексія', desc: 'ШІ шукає власні помилки.', bestWith: 'Фактчекінг.', warning: 'Більше часу на генерацію.', payload: 'Критично оціни відповідь. Знайди можливі помилки.'),
-    PromptEnhancer(name: 'Жорстке Форматування', desc: 'Видача результату кодом.', bestWith: 'Екстракція для баз.', warning: 'Тільки JSON.', payload: 'Поверни результат ВИКЛЮЧНО у форматі валідного JSON.'),
+    PromptEnhancer(name: 'BLUF (Звіт)', desc: 'Головний висновок спочатку.', bestWith: 'Звіти.', warning: 'Скорочує опис.', payload: 'Використовуй формат BLUF (Bottom Line Up Front).'),
+    PromptEnhancer(name: 'Саморефлексія', desc: 'Пошук власних помилок.', bestWith: 'Фактчекінг.', warning: 'Довга генерація.', payload: 'Критично оціни відповідь та знайди можливі помилки.'),
+    PromptEnhancer(name: 'Жорстке Форматування', desc: 'Видача кодом.', bestWith: 'Екстракція.', warning: 'Тільки JSON.', payload: 'Поверни результат ВИКЛЮЧНО у форматі валідного JSON.'),
   ];
 
   @override
@@ -1010,34 +1023,87 @@ class _GenScreenState extends State<GenScreen> {
   }
 
   void _compileAndType() {
-    String base = widget.p.content;
-    _ctrls.forEach((k,v) => base = base.replaceAll('{$k}', v.text.isEmpty ? '{$k}' : v.text));
+    _fullSpans.clear();
+    _totalChars = 0;
+    _currentChar = 0;
+
+    String template = widget.p.content;
+    int lastIndex = 0;
+    final reg = RegExp(r'\{([^}]+)\}');
     
-    final selected = _enhancers.where((e) => e.isSelected).toList();
-    if (selected.isNotEmpty) {
-      base += "\n\n### СИСТЕМНІ ІНСТРУКЦІЇ:\n";
-      for (var e in selected) { base += "- ${e.payload}\n"; }
+    // Парсинг базового тексту (Зелений) та змінних (Червоний)
+    for (var m in reg.allMatches(template)) {
+      if (m.start > lastIndex) {
+        String text = template.substring(lastIndex, m.start);
+        _fullSpans.add(TextSpan(text: text, style: const TextStyle(color: Colors.greenAccent)));
+        _totalChars += text.length;
+      }
+      String key = m.group(1)!;
+      String val = _ctrls[key]?.text ?? '';
+      if (val.isEmpty) val = '{$key}';
+      
+      _fullSpans.add(TextSpan(text: val, style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)));
+      _totalChars += val.length;
+      lastIndex = m.end;
     }
     
-    setState(() { _finalRes = base; _isCompiled = true; _displayedText = ''; });
+    if (lastIndex < template.length) {
+      String text = template.substring(lastIndex);
+      _fullSpans.add(TextSpan(text: text, style: const TextStyle(color: Colors.greenAccent)));
+      _totalChars += text.length;
+    }
+
+    // Додавання підсилень (Жовтий)
+    final selected = _enhancers.where((e) => e.isSelected).toList();
+    if (selected.isNotEmpty) {
+      String hdr = "\n\n### СИСТЕМНІ ІНСТРУКЦІЇ:\n";
+      _fullSpans.add(TextSpan(text: hdr, style: const TextStyle(color: Colors.yellow, fontWeight: FontWeight.bold)));
+      _totalChars += hdr.length;
+      
+      for (var e in selected) {
+        String t = "- ${e.payload}\n";
+        _fullSpans.add(TextSpan(text: t, style: const TextStyle(color: Colors.yellow)));
+        _totalChars += t.length;
+      }
+    }
+
+    setState(() => _isCompiled = true);
     widget.onLog("Компіляція: ${widget.p.title}");
     FocusScope.of(context).unfocus();
 
-    // Ефект друкарської машинки
+    // ТУРБО-Аніміція (По 5 символів кожні 2 мілісекунди)
     _typeTimer?.cancel();
-    int charIndex = 0;
-    _typeTimer = Timer.periodic(const Duration(milliseconds: 15), (t) {
-      if (charIndex < _finalRes.length) {
-        setState(() {
-          charIndex++;
-          _displayedText = _finalRes.substring(0, charIndex) + (charIndex % 2 == 0 ? '_' : '');
-        });
-      } else {
-        setState(() => _displayedText = _finalRes);
-        t.cancel();
-      }
+    _typeTimer = Timer.periodic(const Duration(milliseconds: 2), (t) {
+      setState(() {
+        _currentChar += 5;
+        if (_currentChar >= _totalChars) {
+          _currentChar = _totalChars;
+          t.cancel();
+        }
+      });
     });
   }
+
+  // Динамічний білдер кольорового тексту для анімації
+  List<TextSpan> _getVisibleSpans() {
+    List<TextSpan> result = [];
+    int current = 0;
+    for (var span in _fullSpans) {
+      String text = span.text ?? '';
+      if (current + text.length <= _currentChar) {
+        result.add(span);
+        current += text.length;
+      } else {
+        int remaining = _currentChar - current;
+        if (remaining > 0) result.add(TextSpan(text: text.substring(0, remaining), style: span.style));
+        break;
+      }
+    }
+    if (_currentChar < _totalChars) result.add(const TextSpan(text: '_', style: TextStyle(color: Colors.white)));
+    return result;
+  }
+
+  String get _rawText => _fullSpans.map((s) => s.text).join();
 
   void _showEnhanceMenu() {
     showModalBottomSheet(
@@ -1106,15 +1172,17 @@ class _GenScreenState extends State<GenScreen> {
           Expanded(child: Container(
             width: double.infinity, padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(8), border: Border.all(color: _enhancers.any((e) => e.isSelected) ? const Color(0xFF0057B7) : Colors.transparent)),
-            child: SingleChildScrollView(child: SelectableText(_displayedText, style: const TextStyle(fontFamily: 'monospace', color: Colors.greenAccent)))
+            child: SingleChildScrollView(
+              child: SelectableText.rich(TextSpan(children: _getVisibleSpans()), style: const TextStyle(fontFamily: 'monospace'))
+            )
           )),
           const SizedBox(height: 10),
           Row(children: [
             Expanded(child: ElevatedButton(onPressed: () { setState(() { _isCompiled = false; for (var e in _enhancers) { e.isSelected = false; } }); _typeTimer?.cancel(); }, child: const Text('РЕСЕТ'))),
             const SizedBox(width: 10),
-            Expanded(child: ElevatedButton(onPressed: () { Clipboard.setData(ClipboardData(text: _finalRes)); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Скопійовано'))); }, child: const Text('COPY'))),
+            Expanded(child: ElevatedButton(onPressed: () { Clipboard.setData(ClipboardData(text: _rawText)); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Скопійовано'))); }, child: const Text('COPY'))),
             const SizedBox(width: 10),
-            Expanded(child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFD700)), onPressed: () => Share.share(_finalRes), child: const Text('SHARE', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold))))
+            Expanded(child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFD700)), onPressed: () => Share.share(_rawText), child: const Text('SHARE', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold))))
           ])
         ]
       ])
