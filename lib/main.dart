@@ -6,6 +6,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:exif/exif.dart';
+import 'package:archive/archive.dart'; // <--- НОВИЙ ІМПОРТ ДЛЯ ЧИТАННЯ DOCX
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
@@ -715,7 +716,7 @@ class _DorksScreenState extends State<DorksScreen> {
   }
 }
 
-// --- СКАНЕР (З ІМПОРТОМ DOCX ХАКОМ ТА ПЕРЕХРЕСНИМ МЕНЮ) ---
+// --- СКАНЕР (З ІМПОРТОМ DOCX ТА ПЕРЕХРЕСНИМ МЕНЮ) ---
 class ScannerScreen extends StatefulWidget {
   final Function(String) onLog;
   const ScannerScreen({super.key, required this.onLog});
@@ -741,8 +742,19 @@ class _ScannerScreenState extends State<ScannerScreen> {
         
         if (ext == 'txt' || ext == 'csv' || ext == 'log') {
           content = await file.readAsString();
+        } else if (ext == 'docx') {
+          // РЕАЛЬНИЙ ХАК DOCX (Пакет Archive)
+          final bytes = await file.readAsBytes();
+          final archive = ZipDecoder().decodeBytes(bytes);
+          for (final archiveFile in archive) {
+            if (archiveFile.name == 'word/document.xml') {
+              final xmlContent = utf8.decode(archiveFile.content as List<int>);
+              content = xmlContent.replaceAll(RegExp(r'<[^>]*>'), ' '); // Чистимо XML теги
+              break;
+            }
+          }
         } else {
-          // OSINT ХАК: Читаємо бінарник (doc/pdf) і витягуємо всі друковані символи
+          // Хак для старих .doc або pdf (бінарне читання тексту)
           final bytes = await file.readAsBytes();
           final chars = bytes.where((b) => (b >= 32 && b <= 126) || b == 10 || b == 13).toList();
           content = String.fromCharCodes(chars);
@@ -1031,7 +1043,6 @@ class _GenScreenState extends State<GenScreen> {
     int lastIndex = 0;
     final reg = RegExp(r'\{([^}]+)\}');
     
-    // Парсинг базового тексту (Зелений) та змінних (Червоний)
     for (var m in reg.allMatches(template)) {
       if (m.start > lastIndex) {
         String text = template.substring(lastIndex, m.start);
@@ -1053,7 +1064,6 @@ class _GenScreenState extends State<GenScreen> {
       _totalChars += text.length;
     }
 
-    // Додавання підсилень (Жовтий)
     final selected = _enhancers.where((e) => e.isSelected).toList();
     if (selected.isNotEmpty) {
       String hdr = "\n\n### СИСТЕМНІ ІНСТРУКЦІЇ:\n";
@@ -1071,7 +1081,7 @@ class _GenScreenState extends State<GenScreen> {
     widget.onLog("Компіляція: ${widget.p.title}");
     FocusScope.of(context).unfocus();
 
-    // ТУРБО-Аніміція (По 5 символів кожні 2 мілісекунди)
+    // Швидкість X5
     _typeTimer?.cancel();
     _typeTimer = Timer.periodic(const Duration(milliseconds: 2), (t) {
       setState(() {
@@ -1084,7 +1094,6 @@ class _GenScreenState extends State<GenScreen> {
     });
   }
 
-  // Динамічний білдер кольорового тексту для анімації
   List<TextSpan> _getVisibleSpans() {
     List<TextSpan> result = [];
     int current = 0;
