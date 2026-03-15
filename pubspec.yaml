@@ -9,27 +9,48 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  shared_preferences: ^2.2.2
-  file_picker: ^8.0.1
-  share_plus: ^10.1.0
-  path_provider: ^2.1.2
-  flutter_pdfview: 1.3.1
-  exif: ^3.1.4
+  
+  # Збереження даних (промпти, налаштування, сейф)
+  shared_preferences: ^2.3.3
+  
+  # Робота з файлами (TXT, PDF, DOCX)
+  file_picker: ^8.1.7
+  path_provider: ^2.1.5
+  
+  # Поширення результатів
+  share_plus: ^10.1.4
+  
+  # Перегляд PDF-документів
+  flutter_pdfview: ^1.3.2
+  
+  # Аналіз метаданих зображень
+  exif: ^3.3.0
+  
+  # Робота з архівами (необхідно для читання структури .docx)
+  archive: ^4.0.9
+  
+  # Форматування дат та локалізація
   intl: ^0.19.0
+  
+  # Керування дозволами (пам'ять, камера)
   permission_handler: ^11.3.1
-  archive: ^3.6.1 # Пакет для розпакування та читання DOCX архівів
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_launcher_icons: ^0.13.1
+  
+  # Генератор іконок додатку
+  flutter_launcher_icons: ^0.14.4
 
+# Конфігурація іконки додатку
 flutter_launcher_icons:
   android: "launcher_icon"
-  image_path: "icon.png"
+  image_path: "assets/icon.png" # Переконайтеся, що файл icon.png лежить у папці assets
   min_sdk_size: 21
 
 flutter:
   uses-material-design: true
+
+  # Ресурси додатку
   assets:
     - assets/splash.png
