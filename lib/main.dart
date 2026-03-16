@@ -6,591 +6,1946 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:exif/exif.dart';
-import 'package:archive/archive.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:async';
-import 'dart:math' as math;
+import 'dart:math';
 
-ValueNotifier<bool> isMatrixMode = ValueNotifier(false);
-
+// ─────────────────────────────────────────────
+// ТОЧКА ВХОДУ
+// ─────────────────────────────────────────────
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(statusBarColor: Colors.transparent));
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(statusBarColor: Colors.transparent),
+  );
   runApp(const PromptApp());
 }
 
-// --- МОДЕЛІ ДАНИХ ---
+// ─────────────────────────────────────────────
+// КОНСТАНТИ КОЛЬОРІВ (єдине місце)
+// ─────────────────────────────────────────────
+class AppColors {
+  static const bg         = Color(0xFF040E22);
+  static const bgCard     = Color(0xFF0A152F);
+  static const bgDeep     = Color(0xFF040B16);
+  static const uaBlue     = Color(0xFF0057B7);
+  static const uaYellow   = Color(0xFFE8D98C);
+  static const accent     = Color(0xFF6FA8DC);
+  static const textPrimary   = Color(0xFFEEEEEE);
+  static const textSecondary = Color(0x99FFFFFF);
+  static const textHint      = Color(0x40FFFFFF);
+  static const border     = Color(0x14FFFFFF);
+  static const borderAccent  = Color(0x40E8D98C);
+  static const success    = Color(0xFF4ADE80);
+  static const danger     = Color(0xFFFF6B6B);
+}
+
+// ─────────────────────────────────────────────
+// МОДЕЛІ ДАНИХ
+// ─────────────────────────────────────────────
 class Prompt {
-  String id, title, content, category; bool isFavorite;
-  Prompt({required this.id, required this.title, required this.content, required this.category, this.isFavorite = false});
-  Map<String, dynamic> toJson() => {'id': id, 'title': title, 'content': content, 'category': category, 'isFavorite': isFavorite};
-  factory Prompt.fromJson(Map<String, dynamic> json) => Prompt(id: json['id'], title: json['title'], content: json['content'], category: json['category'], isFavorite: json['isFavorite'] ?? false);
+  String id, title, content, category;
+  bool isFavorite;
+  DateTime createdAt;
+
+  Prompt({
+    required this.id,
+    required this.title,
+    required this.content,
+    required this.category,
+    this.isFavorite = false,
+    DateTime? createdAt,
+  }) : createdAt = createdAt ?? DateTime.now();
+
+  Map<String, dynamic> toJson() => {
+    'id': id, 'title': title, 'content': content,
+    'category': category, 'isFavorite': isFavorite,
+    'createdAt': createdAt.toIso8601String(),
+  };
+
+  factory Prompt.fromJson(Map<String, dynamic> j) => Prompt(
+    id: j['id'], title: j['title'], content: j['content'],
+    category: j['category'], isFavorite: j['isFavorite'] ?? false,
+    createdAt: j['createdAt'] != null ? DateTime.tryParse(j['createdAt']) : null,
+  );
+
+  // Повертає список змінних {param} з контенту
+  List<String> get variables {
+    final reg = RegExp(r'\{([^}]+)\}');
+    return reg.allMatches(content).map((m) => m.group(1)!).toSet().toList();
+  }
 }
 
 class PDFDoc {
   String id, name, path;
   PDFDoc({required this.id, required this.name, required this.path});
   Map<String, dynamic> toJson() => {'id': id, 'name': name, 'path': path};
-  factory PDFDoc.fromJson(Map<String, dynamic> json) => PDFDoc(id: json['id'], name: json['name'], path: json['path']);
+  factory PDFDoc.fromJson(Map<String, dynamic> j) =>
+      PDFDoc(id: j['id'], name: j['name'], path: j['path']);
 }
 
-class PromptEnhancer {
-  String name, desc, pros, cons, rec, payload; bool isSelected;
-  PromptEnhancer({required this.name, required this.desc, required this.pros, required this.cons, required this.rec, required this.payload, this.isSelected = false});
-}
-
-// --- ВІЗУАЛ: АНІМАЦІЯ МАТРИЦІ ТА СІТКА ---
-class MatrixEffect extends StatefulWidget {
-  const MatrixEffect({super.key});
-  @override State<MatrixEffect> createState() => _MatrixEffectState();
-}
-class _MatrixEffectState extends State<MatrixEffect> with SingleTickerProviderStateMixin {
-  late AnimationController _ctrl;
-  final List<double> _y = List.generate(40, (i) => math.Random().nextDouble() * -500);
-  final List<int> _s = List.generate(40, (i) => 3 + math.Random().nextInt(5));
-  final String _chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#\$%^&*";
-
-  @override void initState() {
-    super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(seconds: 10))..repeat();
-  }
-  @override void dispose() { _ctrl.dispose(); super.dispose(); }
-
-  @override Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _ctrl,
-      builder: (context, child) => CustomPaint(painter: MatrixPainter(_y, _s, _chars), child: Container()),
-    );
-  }
-}
-
-class MatrixPainter extends CustomPainter {
-  final List<double> yPos; final List<int> speeds; final String chars;
-  MatrixPainter(this.yPos, this.speeds, this.chars);
-
-  @override void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), Paint()..color = Colors.black);
-    for (int i = 0; i < yPos.length; i++) {
-      double x = i * 20.0; if (x > size.width) break;
-      yPos[i] += speeds[i];
-      if (yPos[i] > size.height) yPos[i] = math.Random().nextDouble() * -200;
-      for (int j = 0; j < 12; j++) {
-        final char = chars[math.Random().nextInt(chars.length)];
-        final tp = TextPainter(text: TextSpan(text: char, style: TextStyle(color: j == 0 ? Colors.white : Colors.greenAccent.withOpacity(math.max(0, 1 - (j * 0.1))), fontSize: 16, fontFamily: 'monospace')), textDirection: TextDirection.ltr);
-        tp.layout(); tp.paint(canvas, Offset(x, yPos[i] - (j * 16)));
-      }
-    }
-  }
-  @override bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
-}
-
-class TopoGridPainter extends CustomPainter {
-  @override void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = const Color(0xFF0057B7).withOpacity(0.03)..strokeWidth = 1.0;
-    for (double i = 0; i < size.width; i += 40) canvas.drawLine(Offset(i, 0), Offset(i, size.height), paint);
-    for (double i = 0; i < size.height; i += 40) canvas.drawLine(Offset(0, i), Offset(size.width, i), paint);
-  }
-  @override bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-class ScrambleText extends StatefulWidget {
-  final String text; final TextStyle style;
-  const ScrambleText({super.key, required this.text, required this.style});
-  @override State<ScrambleText> createState() => _ScrambleTextState();
-}
-class _ScrambleTextState extends State<ScrambleText> {
-  String _disp = ""; Timer? _t;
-  @override void initState() {
-    super.initState(); int f = 0;
-    _t = Timer.periodic(const Duration(milliseconds: 30), (t) {
-      if (!mounted) return;
-      setState(() { f++; _disp = ""; for (int i = 0; i < widget.text.length; i++) { if (f > i + 3) _disp += widget.text[i]; else _disp += "X#&?@"[math.Random().nextInt(5)]; } if (f > widget.text.length + 10) t.cancel(); });
-    });
-  }
-  @override void dispose() { _t?.cancel(); super.dispose(); }
-  @override Widget build(BuildContext context) => Text(_disp, style: widget.style);
-}
-
-// --- APP ---
+// ─────────────────────────────────────────────
+// КОРЕНЕВИЙ ВІДЖЕТ
+// ─────────────────────────────────────────────
 class PromptApp extends StatelessWidget {
   const PromptApp({super.key});
-  @override Widget build(BuildContext context) {
-    return ValueListenableBuilder<bool>(
-      valueListenable: isMatrixMode,
-      builder: (ctx, matrix, _) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          brightness: Brightness.dark,
-          scaffoldBackgroundColor: const Color(0xFF040E22),
-          primaryColor: const Color(0xFF0057B7),
-          fontFamily: 'monospace',
-          appBarTheme: const AppBarTheme(backgroundColor: Colors.transparent, elevation: 0),
-          inputDecorationTheme: InputDecorationTheme(
-            filled: true, fillColor: matrix ? Colors.black87 : const Color(0xFF0A152F),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: matrix ? const BorderSide(color: Colors.green) : BorderSide.none),
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: AppColors.bg,
+        fontFamily: 'sans-serif',
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          titleTextStyle: TextStyle(
+            color: AppColors.textPrimary,
+            fontWeight: FontWeight.w500,
+            fontSize: 16,
+            letterSpacing: 1.5,
           ),
         ),
-        home: const SplashScreen(),
+        tabBarTheme: const TabBarThemeData(
+          labelColor: AppColors.uaYellow,
+          unselectedLabelColor: AppColors.textSecondary,
+          indicator: UnderlineTabIndicator(
+            borderSide: BorderSide(color: AppColors.uaYellow, width: 2),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: AppColors.bgCard,
+          labelStyle: const TextStyle(color: AppColors.textSecondary),
+          hintStyle: const TextStyle(color: AppColors.textHint),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: AppColors.border),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: AppColors.border),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: AppColors.uaBlue),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.uaBlue,
+            foregroundColor: Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            minimumSize: const Size(double.infinity, 50),
+          ),
+        ),
+        dialogTheme: DialogThemeData(
+          backgroundColor: AppColors.bgCard,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: AppColors.uaBlue, width: 0.5),
+          ),
+        ),
       ),
+      // Анімація переходів між екранами
+      navigatorObservers: [],
+      onGenerateRoute: (settings) {
+        final page = settings.arguments as Widget? ?? const SizedBox();
+        return PageRouteBuilder(
+          settings: settings,
+          pageBuilder: (_, __, ___) => page,
+          transitionsBuilder: (_, anim, __, child) => FadeTransition(
+            opacity: CurvedAnimation(parent: anim, curve: Curves.easeInOut),
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0.03, 0),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+              child: child,
+            ),
+          ),
+          transitionDuration: const Duration(milliseconds: 220),
+        );
+      },
+      home: const SplashScreen(),
     );
   }
 }
 
+// ─────────────────────────────────────────────
+// SPLASH SCREEN
+// ─────────────────────────────────────────────
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
-  @override State<SplashScreen> createState() => _SplashScreenState();
-}
-class _SplashScreenState extends State<SplashScreen> {
-  @override void initState() { super.initState(); Timer(const Duration(milliseconds: 1800), () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainScreen()))); }
-  @override Widget build(BuildContext context) => Scaffold(backgroundColor: Colors.black, body: Container(width: double.infinity, height: double.infinity, decoration: const BoxDecoration(image: DecorationImage(image: AssetImage('assets/splash.png'), fit: BoxFit.cover))));
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
 }
 
-// --- ГОЛОВНИЙ ЕКРАН ---
-class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
-  @override State<MainScreen> createState() => _MainScreenState();
-}
-class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateMixin {
-  late TabController _tc;
-  List<Prompt> prompts = []; List<PDFDoc> docs = []; List<String> logs = [];
-  int _taps = 0;
-  final List<String> cats = ['ФО', 'ЮО', 'ГЕОІНТ', 'МОНІТОРИНГ', 'ІНСТРУМЕНТИ', 'ДОКУМЕНТИ'];
+class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _fade;
 
-  @override void initState() { super.initState(); _tc = TabController(length: cats.length, vsync: this); _tc.addListener(() { setState(() {}); }); _load(); }
-
-  void _load() async {
-    final p = await SharedPreferences.getInstance();
-    final pS = p.getString('prompts'); final dS = p.getString('docs'); final lS = p.getStringList('logs');
-    setState(() {
-      if (pS != null) prompts = (json.decode(pS) as List).map((i) => Prompt.fromJson(i)).toList();
-      if (dS != null) docs = (json.decode(dS) as List).map((i) => PDFDoc.fromJson(i)).toList();
-      if (lS != null) logs = lS;
-      if (prompts.isEmpty) prompts = [Prompt(id: '1', title: 'ПОШУК ПЕРСОНИ', category: 'ФО', content: 'Аналіз даних: {ПІБ}\nМісто: {Місто}', isFavorite: true)];
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
+    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeIn);
+    _ctrl.forward();
+    Future.delayed(const Duration(milliseconds: 1800), () {
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        PageRouteBuilder(
+          pageBuilder: (_, __, ___) => const MainScreen(),
+          transitionsBuilder: (_, anim, __, child) =>
+              FadeTransition(opacity: anim, child: child),
+          transitionDuration: const Duration(milliseconds: 500),
+        ),
+      );
     });
   }
 
-  void _save() async {
-    final p = await SharedPreferences.getInstance();
-    await p.setString('prompts', json.encode(prompts.map((i) => i.toJson()).toList()));
-    await p.setString('docs', json.encode(docs.map((i) => i.toJson()).toList()));
-    await p.setStringList('logs', logs);
-  }
+  @override
+  void dispose() { _ctrl.dispose(); super.dispose(); }
 
-  void _log(String a) { setState(() => logs.insert(0, "[${DateTime.now().day.toString().padLeft(2,'0')}.${DateTime.now().month.toString().padLeft(2,'0')} ${DateTime.now().hour.toString().padLeft(2,'0')}:${DateTime.now().minute.toString().padLeft(2,'0')}] $a")); _save(); }
-
-  void _import() async {
-    FilePickerResult? r = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['txt']);
-    if (r != null && r.files.single.path != null) {
-      try {
-        String c = await File(r.files.single.path!).readAsString();
-        List<Prompt> imp = [];
-        for (var b in c.split('===')) {
-          if (b.trim().isEmpty) continue;
-          String cat = 'МОНІТОРИНГ', title = 'БЕЗ НАЗВИ', text = ''; bool isT = false;
-          for (var l in b.trim().split('\n')) {
-            String lw = l.toLowerCase().trim();
-            if (lw.startsWith('категорія:')) {
-              String rawCat = l.substring(10).trim().toUpperCase();
-              if (rawCat.contains('ФІЗ') || rawCat == 'ФО') cat = 'ФО';
-              else if (rawCat.contains('ЮР') || rawCat == 'ЮО') cat = 'ЮО';
-              else if (rawCat.contains('ГЕО')) cat = 'ГЕОІНТ';
-              else cat = 'МОНІТОРИНГ';
-            }
-            else if (lw.startsWith('назва:')) title = l.substring(6).trim();
-            else if (lw.startsWith('текст:')) { text = l.substring(6).trim(); isT = true; }
-            else if (isT) text += "\n$l";
-          }
-          if (text.isNotEmpty && title.isNotEmpty) imp.add(Prompt(id: DateTime.now().millisecondsSinceEpoch.toString() + title, title: title, content: text.trim(), category: cat));
-        }
-        setState(() => prompts.addAll(imp)); 
-        _log("Імпортовано: ${imp.length} записів з TXT"); 
-        _save();
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Успішно імпортовано ${imp.length} промптів', style: const TextStyle(color: Colors.greenAccent)), backgroundColor: const Color(0xFF040E22)));
-      } catch(e) {
-        _log("Помилка імпорту TXT");
-      }
-    }
-  }
-
-  void _addP({Prompt? p}) {
-    final tC = TextEditingController(text: p?.title ?? ''); final cC = TextEditingController(text: p?.content ?? '');
-    String sC = p?.category ?? 'ФО';
-    showDialog(context: context, builder: (ctx) => StatefulBuilder(builder: (c, setS) => AlertDialog(
-      backgroundColor: isMatrixMode.value ? Colors.black87 : const Color(0xFF0A152F), title: Text(p == null ? 'НОВИЙ ЗАПИС' : 'РЕДАГУВАННЯ', style: TextStyle(color: isMatrixMode.value ? Colors.greenAccent : Colors.white)),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        DropdownButtonFormField<String>(dropdownColor: const Color(0xFF0A152F), isExpanded: true, value: sC, items: ['ФО','ЮО','ГЕОІНТ','МОНІТОРИНГ'].map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(), onChanged: (v) => setS(() => sC = v!)),
-        const SizedBox(height: 10), TextField(controller: tC, decoration: const InputDecoration(labelText: 'НАЗВА')),
-        const SizedBox(height: 10), TextField(controller: cC, maxLines: 4, decoration: const InputDecoration(labelText: 'ЗМІСТ {VAR}')),
-      ]),
-      actions: [
-        if (p != null) TextButton(onPressed: () async { 
-          Navigator.pop(ctx);
-          setState(() { p.title = "█████████"; p.content = "████████████████"; });
-          HapticFeedback.heavyImpact(); await Future.delayed(const Duration(milliseconds: 600));
-          setState(() => prompts.remove(p)); _save(); 
-        }, child: const Text('ВИДАЛИТИ', style: TextStyle(color: Colors.red))),
-        TextButton(onPressed: () => Navigator.pop(ctx), child: Text('СКАСУВАТИ', style: TextStyle(color: isMatrixMode.value ? Colors.green : Colors.white))),
-        ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: isMatrixMode.value ? Colors.green.withOpacity(0.2) : const Color(0xFF0057B7)), onPressed: () {
-          setState(() { if (p == null) prompts.add(Prompt(id: DateTime.now().toString(), title: tC.text, content: cC.text, category: sC)); else { p.title = tC.text; p.content = cC.text; p.category = sC; } });
-          _save(); Navigator.pop(ctx);
-        }, child: Text('ЗБЕРЕГТИ', style: TextStyle(color: isMatrixMode.value ? Colors.greenAccent : Colors.white)))
-      ],
-    )));
-  }
-
-  void _pickPDF() async {
-    FilePickerResult? r = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['pdf']);
-    if (r != null && r.files.single.path != null) {
-      final dir = await getApplicationDocumentsDirectory(); final path = '${dir.path}/${r.files.single.name}';
-      await File(r.files.single.path!).copy(path);
-      setState(() => docs.add(PDFDoc(id: DateTime.now().toString(), name: r.files.single.name, path: path))); _save();
-    }
-  }
-
-  @override Widget build(BuildContext context) {
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: GestureDetector(onTap: () { if (++_taps >= 7) { isMatrixMode.value = !isMatrixMode.value; _taps = 0; HapticFeedback.vibrate(); } }, child: Text('UKR_OSINT', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2, color: isMatrixMode.value ? Colors.greenAccent : Colors.white))),
-        actions: [
-          IconButton(icon: Icon(Icons.analytics, color: isMatrixMode.value ? Colors.green : Colors.yellow), onPressed: () {
-            Map<String, int> s = {'ФО': 0, 'ЮО': 0, 'ГЕОІНТ': 0, 'МОНІТОРИНГ': 0}; int tot = prompts.length;
-            for (var p in prompts) if (s.containsKey(p.category)) s[p.category] = s[p.category]! + 1;
-            showDialog(context: context, builder: (c) => AlertDialog(backgroundColor: isMatrixMode.value ? Colors.black87 : const Color(0xFF040E22), title: Text('СТАТИСТИКА БАЗИ', style: TextStyle(color: isMatrixMode.value ? Colors.greenAccent : Colors.white)), content: Column(mainAxisSize: MainAxisSize.min, children: s.entries.map((e) => Column(children: [Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(e.key), Text('${e.value}')]), const SizedBox(height: 4), LinearProgressIndicator(value: tot == 0 ? 0 : e.value / tot, color: isMatrixMode.value ? Colors.green : Colors.blue, backgroundColor: Colors.white10), const SizedBox(height: 8)])).toList())));
-          }),
-          IconButton(icon: Icon(Icons.receipt_long, color: isMatrixMode.value ? Colors.green : Colors.white), onPressed: () => showDialog(context: context, builder: (c) => AlertDialog(backgroundColor: Colors.black, title: const Text('ЖУРНАЛ ДІЙ', style: TextStyle(color: Colors.greenAccent)), content: SizedBox(width: double.maxFinite, height: 300, child: logs.isEmpty ? const Center(child: Text('НЕМАЄ ЗАПИСІВ')) : ListView.builder(itemCount: logs.length, itemBuilder: (cc, i) => Text(logs[i], style: const TextStyle(fontSize: 10, color: Colors.greenAccent))))))),
-          IconButton(icon: Icon(Icons.download, color: isMatrixMode.value ? Colors.greenAccent : Colors.blue), onPressed: _import),
-        ],
-        bottom: TabBar(controller: _tc, isScrollable: true, labelColor: isMatrixMode.value ? Colors.greenAccent : Colors.white, indicatorColor: isMatrixMode.value ? Colors.greenAccent : Colors.blue, tabs: cats.map((c) => Tab(text: c)).toList()),
-      ),
-      body: Stack(children: [
-        if (isMatrixMode.value) const MatrixEffect() else CustomPaint(painter: TopoGridPainter(), child: Container()),
-        TabBarView(controller: _tc, children: cats.map((cat) {
-          if (cat == 'ІНСТРУМЕНТИ') return ToolsMenu(onLog: _log);
-          if (cat == 'ДОКУМЕНТИ') return docs.isEmpty ? const Center(child: Text('[ ФАЙЛІВ НЕМАЄ ]', style: TextStyle(color: Colors.white24))) : ListView.builder(itemCount: docs.length, itemBuilder: (c, i) => Card(margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), color: Colors.white.withOpacity(isMatrixMode.value ? 0.02 : 0.05), child: ListTile(leading: Icon(Icons.picture_as_pdf, color: isMatrixMode.value ? Colors.green : Colors.white), title: Text(docs[i].name, style: TextStyle(color: isMatrixMode.value ? Colors.greenAccent : Colors.white)), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PDFViewerScreen(doc: docs[i]))), trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () { setState(() => docs.removeAt(i)); _save(); }))));
-          final items = prompts.where((p) => p.category == cat).toList();
-          if (items.isEmpty) return const Center(child: Text('[ ПУСТО ]', style: TextStyle(color: Colors.white24)));
-          items.sort((a, b) => (b.isFavorite ? 1 : 0).compareTo(a.isFavorite ? 1 : 0));
-          return ListView.builder(itemCount: items.length, itemBuilder: (ctx, i) => Card(
-            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), color: Colors.white.withOpacity(isMatrixMode.value ? 0.02 : 0.05),
-            child: ListTile(
-              leading: IconButton(icon: Icon(items[i].isFavorite ? Icons.star : Icons.star_border, color: items[i].isFavorite ? (isMatrixMode.value ? Colors.green : Colors.yellow) : Colors.white24), onPressed: () { setState(() => items[i].isFavorite = !items[i].isFavorite); _save(); }),
-              title: Text(items[i].title, style: TextStyle(fontWeight: FontWeight.bold, color: isMatrixMode.value ? Colors.greenAccent : Colors.white)),
-              subtitle: Text(items[i].content, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: isMatrixMode.value ? Colors.green : Colors.grey)),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => GenScreen(p: items[i], onLog: _log))),
-              onLongPress: () => _addP(p: items[i]),
+      backgroundColor: Colors.black,
+      body: FadeTransition(
+        opacity: _fade,
+        child: SizedBox.expand(
+          child: Image.asset(
+            'assets/splash.png',
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const Center(
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Text('🔱', style: TextStyle(fontSize: 64)),
+                SizedBox(height: 16),
+                Text('UKR_OSINT', style: TextStyle(
+                  color: AppColors.uaYellow, fontSize: 22,
+                  letterSpacing: 4, fontWeight: FontWeight.w500,
+                )),
+              ]),
             ),
-          ));
-        }).toList()),
-      ]),
-      floatingActionButton: _tc.index == 4 ? null : FloatingActionButton(backgroundColor: isMatrixMode.value ? Colors.green.withOpacity(0.3) : const Color(0xFF0057B7), onPressed: () => _tc.index == 5 ? _pickPDF() : _addP(), child: Icon(_tc.index == 5 ? Icons.picture_as_pdf : Icons.add, color: isMatrixMode.value ? Colors.greenAccent : Colors.white)),
+          ),
+        ),
+      ),
     );
   }
 }
-// --- МЕНЮ ІНСТРУМЕНТІВ ---
-class ToolsMenu extends StatelessWidget {
-  final Function(String) onLog; const ToolsMenu({super.key, required this.onLog});
-  @override Widget build(BuildContext context) => ListView(padding: const EdgeInsets.all(12), children: [
-    _t(context, 'DORKS', 'Google Конструктор (Новини, Документи)', Icons.travel_explore, DorksScreen(onLog: onLog)),
-    _t(context, 'СКАНЕР', 'Екстракція (IP/Телефон/Email)', Icons.radar, ScannerScreen(onLog: onLog)),
-    _t(context, 'EXIF', 'Аналіз метаданих фотографій', Icons.image_search, ExifScreen(onLog: onLog)),
-    _t(context, 'ІПН', 'Дешифратор РНОКПП', Icons.fingerprint, IpnScreen(onLog: onLog)),
-    _t(context, 'ФІНАНСИ', 'Перевірка карток (Алгоритм Луна)', Icons.credit_card, FinScreen(onLog: onLog)),
-    _t(context, 'АВТО', 'Регіони України', Icons.directions_car, AutoScreen(onLog: onLog)),
-    _t(context, 'НІКНЕЙМИ', 'Генератор варіантів', Icons.psychology, NickScreen(onLog: onLog)),
-    _t(context, 'ХРОНОЛОГІЯ', 'Таймлайн подій', Icons.timeline, TimeScreen(onLog: onLog)),
-    _t(context, 'СЕЙФ', 'Захищений менеджер паролів', Icons.lock, VaultScreen(onLog: onLog)),
-  ]);
-  Widget _t(ctx, t, s, i, sc) => Card(color: Colors.white.withOpacity(0.03), child: ListTile(leading: Icon(i, color: Colors.yellow), title: Text(t, style: const TextStyle(fontWeight: FontWeight.bold)), subtitle: Text(s, style: const TextStyle(fontSize: 10)), onTap: () => Navigator.push(ctx, MaterialPageRoute(builder: (_) => sc))));
+
+// ─────────────────────────────────────────────
+// ГОЛОВНИЙ ЕКРАН
+// ─────────────────────────────────────────────
+class MainScreen extends StatefulWidget {
+  const MainScreen({super.key});
+  @override
+  State<MainScreen> createState() => _MainScreenState();
 }
 
-// --- DORKS (НОВІ, ПРИЗЕМЛЕНІ) ---
-class DorksScreen extends StatefulWidget {
-  final Function(String) onLog; const DorksScreen({super.key, required this.onLog});
-  @override State<DorksScreen> createState() => _DorksScreenState();
-}
-class _DorksScreenState extends State<DorksScreen> {
-  final _t = TextEditingController(); List<Map<String, String>> _d = [];
-  void _gen() {
-    String s = _t.text.trim(); if (s.isEmpty) return;
-    setState(() => _d = [
-      {'t': 'ДОКУМЕНТИ', 'd': 'PDF, Word, Excel на сайті', 'q': 'site:$s ext:pdf OR ext:docx OR ext:xlsx OR ext:csv'},
-      {'t': 'НОВИНИ / ЗГАДКИ', 'd': 'Згадки в новинах та пресі', 'q': 'site:$s inurl:news OR intext:"$s"'},
-      {'t': 'ВІДКРИТІ ДИРЕКТОРІЇ', 'd': 'Пошук індексів файлів', 'q': 'site:$s intitle:"index of"'},
-      {'t': 'СОЦМЕРЕЖІ', 'd': 'Зв\'язок домену з соцмережами', 'q': 'site:linkedin.com/in OR site:facebook.com "$s"'},
-      {'t': 'ПІДДОМЕНИ', 'd': 'Пошук тестових та робочих піддоменів', 'q': 'site:*.$s -www'},
-      {'t': 'КОНФІГИ ТА БАЗИ ДАНИХ', 'd': 'Файли налаштувань, SQL дампи', 'q': 'site:$s ext:env OR ext:sql OR ext:db OR ext:log'}
-    ]); widget.onLog("Dorks: згенеровано для $s");
-  }
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('КОНСТРУКТОР DORKS')), body: Column(children: [ Padding(padding: const EdgeInsets.all(16), child: TextField(controller: _t, decoration: const InputDecoration(labelText: 'ЦІЛЬОВИЙ ДОМЕН АБО КЛЮЧОВЕ СЛОВО'))), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7)), onPressed: _gen, child: const Text('ЗГЕНЕРУВАТИ', style: TextStyle(color: Colors.white))), Expanded(child: ListView.builder(itemCount: _d.length, itemBuilder: (c, i) => Card(margin: const EdgeInsets.all(8), color: Colors.white.withOpacity(0.05), child: ListTile(title: Text(_d[i]['t']!, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.greenAccent)), subtitle: Text("${_d[i]['d']!}\n\n${_d[i]['q']!}"), isThreeLine: true, trailing: IconButton(icon: const Icon(Icons.copy), onPressed: () { Clipboard.setData(ClipboardData(text: _d[i]['q']!)); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Скопійовано!'))); } ))))) ]));
-}
+class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  List<Prompt> prompts = [];
+  List<PDFDoc> docs = [];
+  List<String> auditLogs = [];
+  int _secretCounter = 0;
 
-// --- СКАНЕР ---
-class ScannerScreen extends StatefulWidget {
-  final Function(String) onLog; const ScannerScreen({super.key, required this.onLog});
-  @override State<ScannerScreen> createState() => _ScannerScreenState();
-}
-class _ScannerScreenState extends State<ScannerScreen> with SingleTickerProviderStateMixin {
-  final _c = TextEditingController(); List<Map<String, String>> _r = []; late AnimationController _l; bool _sc = false;
-  @override void initState() { super.initState(); _l = AnimationController(vsync: this, duration: const Duration(seconds: 2)); }
-  @override void dispose() { _l.dispose(); super.dispose(); }
-  void _load() async {
-    FilePickerResult? r = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['txt', 'docx']);
-    if (r != null) {
-      final file = File(r.files.single.path!); String txt = "";
-      if (r.files.single.extension == 'docx') { final arc = ZipDecoder().decodeBytes(await file.readAsBytes()); for (var f in arc) if (f.name == 'word/document.xml') txt = utf8.decode(f.content).replaceAll(RegExp(r'<[^>]*>'), ' '); } else txt = await file.readAsString();
-      setState(() => _c.text = txt);
-    }
-  }
-  void _scan() async {
-    setState(() { _sc = true; _r.clear(); }); _l.repeat(); await Future.delayed(const Duration(seconds: 2));
-    String t = _c.text;
-    final i = RegExp(r'\b(?:\d{1,3}\.){3}\d{1,3}\b').allMatches(t).map((m) => {'v': m.group(0)!, 't': 'IP'});
-    final p = RegExp(r'(?:\+380|\+7|8)[ \-\(\)]?\d{2,3}[ \-\(\)]?\d{3}[ \-]?\d{2}[ \-]?\d{2}').allMatches(t).map((m) => {'v': m.group(0)!, 't': 'ТЕЛЕФОН'});
-    final e = RegExp(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}').allMatches(t).map((m) => {'v': m.group(0)!, 't': 'EMAIL'});
-    final u = RegExp(r'(?:https?:\/\/)?(?:www\.)?(?:t\.me|instagram\.com|facebook\.com|vk\.com|x\.com)\/[a-zA-Z0-9_.-]+').allMatches(t).map((m) => {'v': m.group(0)!, 't': 'СОЦМЕРЕЖА/ЛІНК'});
-    setState(() { _r = [...i, ...p, ...e, ...u]; _sc = false; }); _l.stop(); widget.onLog("Сканер: знайдено ${_r.length} об'єктів");
-  }
-  bool _en(String v) => v.contains('.ru') || v.contains('+7') || v.contains('vk.com') || v.contains('mail.ru');
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('РАДАР-СКАНЕР'), actions: [IconButton(icon: const Icon(Icons.file_open), onPressed: _load)]), body: Column(children: [
-    Stack(children: [ Padding(padding: const EdgeInsets.all(16), child: TextField(controller: _c, maxLines: 5, decoration: const InputDecoration(labelText: 'ВВЕДІТЬ АБО ЗАВАНТАЖТЕ ТЕКСТ'))), if (_sc) AnimatedBuilder(animation: _l, builder: (c, _) => Positioned(top: 20 + (_l.value * 120), left: 16, right: 16, child: Container(height: 2, color: Colors.red, decoration: const BoxDecoration(boxShadow: [BoxShadow(color: Colors.red, blurRadius: 10)])))) ]),
-    ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7)), onPressed: _scan, child: const Text('СКАЛУВАТИ ДАНІ', style: TextStyle(color: Colors.white))),
-    Expanded(child: ListView.builder(itemCount: _r.length, itemBuilder: (c, i) => Card(color: _en(_r[i]['v']!) ? Colors.red.withOpacity(0.2) : Colors.white.withOpacity(0.05), child: ListTile(title: Text(_r[i]['v']!, style: TextStyle(color: _en(_r[i]['v']!) ? Colors.redAccent : Colors.greenAccent, fontWeight: FontWeight.bold)), subtitle: Text(_r[i]['t']!, style: const TextStyle(fontSize: 10)), trailing: IconButton(icon: const Icon(Icons.copy, size: 16), onPressed: () { Clipboard.setData(ClipboardData(text: _r[i]['v']!)); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Скопійовано!'))); })))))
-  ]));
-}
+  // Пошук
+  bool _searchActive = false;
+  String _searchQuery = '';
+  final _searchCtrl = TextEditingController();
 
-// --- EXIF (БЕЗПЕЧНИЙ) ---
-class ExifScreen extends StatefulWidget {
-  final Function(String) onLog; const ExifScreen({super.key, required this.onLog});
-  @override State<ExifScreen> createState() => _ExifScreenState();
-}
-class _ExifScreenState extends State<ExifScreen> {
-  Map<String, dynamic> _d = {};
-  void _p() async { 
-    try {
-      FilePickerResult? r = await FilePicker.platform.pickFiles(type: FileType.image); 
-      if (r != null) { 
-        final bytes = await File(r.files.single.path!).readAsBytes();
-        final t = await readExifFromBytes(bytes); 
-        if (t.isEmpty) {
-          setState(() => _d = {'Статус': 'Метадані відсутні або очищені (можливо, фото з месенджера)'});
-        } else {
-          setState(() => _d = t); 
-        }
-        widget.onLog("EXIF: фото проаналізовано"); 
-      } 
-    } catch (e) {
-      setState(() => _d = {'Помилка': 'Не вдалося прочитати метадані файлу'});
-    }
-  }
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('EXIF АНАЛІЗАТОР')), body: Column(children: [ const SizedBox(height: 10), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7)), onPressed: _p, child: const Text('ОБРАТИ ФОТО', style: TextStyle(color: Colors.white))), const SizedBox(height: 10), Expanded(child: _d.isEmpty ? const Center(child: Text('ЧЕКАЮ НА ФАЙЛ...', style: TextStyle(color: Colors.white24))) : ListView.builder(itemCount: _d.length, itemBuilder: (c, i) => Card(color: Colors.white.withOpacity(0.05), margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), child: ListTile(title: Text(_d.keys.elementAt(i), style: const TextStyle(fontSize: 12)), subtitle: Text(_d.values.elementAt(i).toString(), style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)))))) ]));
-}
-
-// --- ІПН ---
-class IpnScreen extends StatefulWidget {
-  final Function(String) onLog; const IpnScreen({super.key, required this.onLog});
-  @override State<IpnScreen> createState() => _IpnScreenState();
-}
-class _IpnScreenState extends State<IpnScreen> {
-  final _c = TextEditingController(); Map<String, String>? _r;
-  void _d() {
-    String s = _c.text.trim(); if (s.length != 10) return;
-    DateTime d = DateTime(1899, 12, 31).add(Duration(days: int.parse(s.substring(0, 5)))); int a = DateTime.now().year - d.year;
-    setState(() => _r = {'ДАТА НАРОДЖЕННЯ': "${d.day.toString().padLeft(2,'0')}.${d.month.toString().padLeft(2,'0')}.${d.year}", 'ПОВНИХ РОКІВ': "$a", 'СТАТЬ': int.parse(s[8]) % 2 == 0 ? 'Жіноча' : 'Чоловіча'});
-    widget.onLog("ІПН: успішно дешифровано");
-  }
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('ДЕШИФРАТОР ІПН')), body: Padding(padding: const EdgeInsets.all(16), child: Column(children: [ TextField(controller: _c, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'ВВЕДІТЬ 10 ЦИФР РНОКПП')), const SizedBox(height: 10), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7)), onPressed: _d, child: const Text('ДЕШИФРУВАТИ', style: TextStyle(color: Colors.white))), const SizedBox(height: 20), if (_r != null) ..._r!.entries.map((e) => ListTile(title: Text(e.key, style: const TextStyle(color: Colors.grey)), subtitle: ScrambleText(text: e.value, style: const TextStyle(color: Colors.greenAccent, fontSize: 22, fontWeight: FontWeight.bold)))) ])));
-}
-
-// --- ФІНАНСИ ---
-class FinScreen extends StatefulWidget {
-  final Function(String) onLog; const FinScreen({super.key, required this.onLog});
-  @override State<FinScreen> createState() => _FinScreenState();
-}
-class _FinScreenState extends State<FinScreen> {
-  final _c = TextEditingController(); String _r = "";
-  void _ch() {
-    String cc = _c.text.replaceAll(' ', ''); if (cc.isEmpty) return;
-    int s = 0; bool a = false; for (int i = cc.length - 1; i >= 0; i--) { int n = int.parse(cc[i]); if (a) { n *= 2; if (n > 9) n -= 9; } s += n; a = !a; }
-    setState(() => _r = s % 10 == 0 ? "✅ ВАЛІДНА КАРТКА" : "❌ НЕ КОРЕКТНА (ПОМИЛКА ЛУНА)"); widget.onLog("Фінанси: перевірка картки");
-  }
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('ВАЛІДАТОР КАРТОК')), body: Padding(padding: const EdgeInsets.all(16), child: Column(children: [ TextField(controller: _c, decoration: const InputDecoration(labelText: 'НОМЕР КАРТКИ')), const SizedBox(height: 10), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7)), onPressed: _ch, child: const Text('ПЕРЕВІРИТИ (АЛГОРИТМ ЛУНА)', style: TextStyle(color: Colors.white))), const SizedBox(height: 30), Text(_r, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: _r.contains('ВАЛІДНА') ? Colors.greenAccent : Colors.redAccent)) ])));
-}
-
-// --- АВТО ---
-class AutoScreen extends StatefulWidget {
-  final Function(String) onLog; const AutoScreen({super.key, required this.onLog});
-  @override State<AutoScreen> createState() => _AutoScreenState();
-}
-class _AutoScreenState extends State<AutoScreen> {
-  final _c = TextEditingController(); String _r = "";
-  final Map<String, String> _reg = {'AA': 'м. Київ', 'KA': 'м. Київ', 'TT': 'м. Київ', 'AB': 'Вінницька обл.', 'KB': 'Вінницька обл.', 'AC': 'Волинська обл.', 'AE': 'Дніпропетровська обл.', 'KE': 'Дніпропетровська обл.', 'AH': 'Донецька обл.', 'AM': 'Житомирська обл.', 'AO': 'Закарпатська обл.', 'AP': 'Запорізька обл.', 'AT': 'Івано-Франківська обл.', 'AI': 'Київська обл.', 'BA': 'Кіровоградська обл.', 'BB': 'Луганська обл.', 'BC': 'Львівська обл.', 'HC': 'Львівська обл.', 'BE': 'Миколаївська обл.', 'BH': 'Одеська обл.', 'HH': 'Одеська обл.', 'BI': 'Полтавська обл.', 'BK': 'Рівненська обл.', 'BM': 'Сумська обл.', 'BO': 'Тернопільська обл.', 'AX': 'Харківська обл.', 'KX': 'Харківська обл.', 'BT': 'Херсонська обл.', 'BX': 'Хмельницька обл.', 'CA': 'Черкаська обл.', 'CB': 'Чернігівська обл.', 'CE': 'Чернівецька обл.', 'AK': 'АР Крим', 'CH': 'м. Севастополь'};
-  void _ch() { String s = _c.text.trim().toUpperCase(); if (s.length < 2) return; setState(() => _r = _reg[s.substring(0, 2)] ?? "Невідомий регіон / Новий формат"); widget.onLog("Авто: пошук регіону"); }
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('АВТО НОМЕРИ')), body: Padding(padding: const EdgeInsets.all(16), child: Column(children: [ TextField(controller: _c, decoration: const InputDecoration(labelText: 'НОМЕР (напр. АА1234ВВ)')), const SizedBox(height: 10), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7)), onPressed: _ch, child: const Text('ВИЗНАЧИТИ РЕГІОН', style: TextStyle(color: Colors.white))), const SizedBox(height: 30), Text(_r, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.greenAccent)) ])));
-}
-
-// --- НІКНЕЙМИ ---
-class NickScreen extends StatefulWidget {
-  final Function(String) onLog; const NickScreen({super.key, required this.onLog});
-  @override State<NickScreen> createState() => _NickScreenState();
-}
-class _NickScreenState extends State<NickScreen> {
-  final _c = TextEditingController(); List<String> _r = [];
-  void _g() { String s = _c.text.trim().toLowerCase().replaceAll(' ', '_'); if (s.isEmpty) return; setState(() => _r = [s, "${s}_osint", "the_$s", "real_$s", "${s}2026", "$s.ua", "sec_$s", "$s.priv", "$s@gmail.com", "$s@proton.me"]); widget.onLog("Нікнейми: генерація"); }
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('ГЕНЕРАТОР НІКІВ')), body: Column(children: [ Padding(padding: const EdgeInsets.all(16), child: TextField(controller: _c, decoration: const InputDecoration(labelText: 'БАЗОВЕ СЛОВО АБО ПРІЗВИЩЕ'))), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7)), onPressed: _g, child: const Text('ЗГЕНЕРУВАТИ ВАРІАНТИ', style: TextStyle(color: Colors.white))), Expanded(child: ListView.builder(itemCount: _r.length, itemBuilder: (c, i) => Card(color: Colors.white.withOpacity(0.05), margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4), child: ListTile(title: Text(_r[i], style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)), trailing: IconButton(icon: const Icon(Icons.copy, size: 16), onPressed: () { Clipboard.setData(ClipboardData(text: _r[i])); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Скопійовано!'))); } ))))) ]));
-}
-
-// --- ХРОНОЛОГІЯ ---
-class TimeScreen extends StatefulWidget {
-  final Function(String) onLog; const TimeScreen({super.key, required this.onLog});
-  @override State<TimeScreen> createState() => _TimeScreenState();
-}
-class _TimeScreenState extends State<TimeScreen> {
-  List<Map<String, String>> _e = [];
-  @override void initState() { super.initState(); _l(); }
-  void _l() async { final p = await SharedPreferences.getInstance(); final d = p.getString('tl'); if (d != null) setState(() => _e = List<Map<String, String>>.from(json.decode(d).map((x) => Map<String, String>.from(x)))); }
-  void _s() async { final p = await SharedPreferences.getInstance(); p.setString('tl', json.encode(_e)); }
-  void _a() {
-    final dC = TextEditingController(text: "${DateTime.now().day.toString().padLeft(2,'0')}.${DateTime.now().month.toString().padLeft(2,'0')}.${DateTime.now().year}"); final tC = TextEditingController();
-    showDialog(context: context, builder: (c) => AlertDialog(backgroundColor: const Color(0xFF0A152F), title: const Text('НОВА ПОДІЯ', style: TextStyle(color: Colors.white)), content: Column(mainAxisSize: MainAxisSize.min, children: [TextField(controller: dC, decoration: const InputDecoration(labelText: 'Дата')), const SizedBox(height: 10), TextField(controller: tC, maxLines: 3, decoration: const InputDecoration(labelText: 'Опис події'))]), actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('СКАСУВАТИ', style: TextStyle(color: Colors.white))), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7)), onPressed: () { setState(() => _e.add({'d': dC.text, 't': tC.text})); _s(); Navigator.pop(c); widget.onLog("Таймлайн: додано подію"); }, child: const Text('ДОДАТИ', style: TextStyle(color: Colors.white)))]));
-  }
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('ХРОНОЛОГІЯ')), body: _e.isEmpty ? const Center(child: Text('ПОДІЙ НЕМАЄ', style: TextStyle(color: Colors.white24))) : ListView.builder(itemCount: _e.length, itemBuilder: (c, i) => Card(color: Colors.white.withOpacity(0.05), margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), child: ListTile(leading: const Icon(Icons.circle, size: 12, color: Colors.blueAccent), title: Text(_e[i]['d']!, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueAccent)), subtitle: Text(_e[i]['t']!), trailing: IconButton(icon: const Icon(Icons.delete, size: 16, color: Colors.red), onPressed: () { setState(() => _e.removeAt(i)); _s(); })))), floatingActionButton: FloatingActionButton(backgroundColor: const Color(0xFF0057B7), onPressed: _a, child: const Icon(Icons.add, color: Colors.white)));
-}
-
-// --- СЕЙФ З ПАРОЛЕМ ---
-class VaultScreen extends StatefulWidget {
-  final Function(String) onLog; const VaultScreen({super.key, required this.onLog});
-  @override State<VaultScreen> createState() => _VaultScreenState();
-}
-class _VaultScreenState extends State<VaultScreen> {
-  bool _unlocked = false; 
-  bool _isFirstLaunch = true;
-  String _savedMp = "";
-  final _mp = TextEditingController();
-  List<Map<String, String>> _v = [];
-  
-  @override void initState() { super.initState(); _l(); }
-  
-  void _l() async { 
-    final p = await SharedPreferences.getInstance(); 
-    final d = p.getString('vt'); 
-    final savedMp = p.getString('master_pass');
-    
-    if (savedMp != null && savedMp.isNotEmpty) {
-      _isFirstLaunch = false;
-      _savedMp = savedMp;
-    }
-    if (d != null) setState(() => _v = List<Map<String, String>>.from(json.decode(d).map((x) => Map<String, String>.from(x)))); 
-    setState(() {});
-  }
-  
-  void _s() async { final p = await SharedPreferences.getInstance(); p.setString('vt', json.encode(_v)); }
-  
-  void _setPass() async {
-    if (_mp.text.length < 4) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Пароль має бути мінімум 4 символи!'), backgroundColor: Colors.red));
-      return;
-    }
-    final p = await SharedPreferences.getInstance();
-    p.setString('master_pass', _mp.text);
-    setState(() { _savedMp = _mp.text; _isFirstLaunch = false; _unlocked = true; });
-    widget.onLog("Сейф: встановлено майстер-пароль");
-  }
-
-  void _checkPass() {
-    if (_mp.text == _savedMp) {
-      setState(() => _unlocked = true); 
-      widget.onLog("Сейф: успішний вхід"); 
-    } else { 
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('НЕВІРНИЙ ПАРОЛЬ!'), backgroundColor: Colors.red)); 
-    }
-  }
-
-  void _a() {
-    final rC = TextEditingController(), lC = TextEditingController(), pC = TextEditingController();
-    showDialog(context: context, builder: (c) => AlertDialog(backgroundColor: isMatrixMode.value ? Colors.black87 : const Color(0xFF0A152F), title: const Text('НОВИЙ ЗАПИС', style: TextStyle(color: Colors.white)), content: Column(mainAxisSize: MainAxisSize.min, children: [TextField(controller: rC, decoration: const InputDecoration(labelText: 'Ресурс (Сайт/Додаток)')), const SizedBox(height: 10), TextField(controller: lC, decoration: const InputDecoration(labelText: 'Логін / Email / Phone')), const SizedBox(height: 10), TextField(controller: pC, decoration: const InputDecoration(labelText: 'Пароль'))]), actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('СКАСУВАТИ', style: TextStyle(color: Colors.white))), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7)), onPressed: () { setState(() => _v.add({'r': rC.text, 'l': lC.text, 'p': pC.text})); _s(); Navigator.pop(c); widget.onLog("Сейф: додано запис"); }, child: const Text('ЗБЕРЕГТИ', style: TextStyle(color: Colors.white)))]));
-  }
-  
-  @override Widget build(BuildContext context) {
-    if (_isFirstLaunch) {
-      return Scaffold(appBar: AppBar(title: const Text('СЕЙФ [НАЛАШТУВАННЯ]')), body: Center(child: Padding(padding: const EdgeInsets.all(32), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [ const Icon(Icons.security, size: 64, color: Colors.blueAccent), const SizedBox(height: 20), const Text('Створіть свій майстер-пароль. Він не підлягає відновленню!', textAlign: TextAlign.center, style: TextStyle(color: Colors.redAccent)), const SizedBox(height: 20), TextField(controller: _mp, obscureText: true, decoration: const InputDecoration(labelText: 'ПРИДУМАЙТЕ ПАРОЛЬ')), const SizedBox(height: 20), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7)), onPressed: _setPass, child: const Text('СТВОРИТИ СЕЙФ', style: TextStyle(color: Colors.white))) ]))));
-    }
-    if (!_unlocked) {
-      return Scaffold(appBar: AppBar(title: const Text('СЕЙФ [ЗАБЛОКОВАНО]')), body: Center(child: Padding(padding: const EdgeInsets.all(32), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [ const Icon(Icons.lock, size: 64, color: Colors.yellow), const SizedBox(height: 20), TextField(controller: _mp, obscureText: true, decoration: const InputDecoration(labelText: 'МАЙСТЕР-ПАРОЛЬ'), onSubmitted: (val) => _checkPass()), const SizedBox(height: 20), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7)), onPressed: _checkPass, child: const Text('ВІДЧИНИТИ', style: TextStyle(color: Colors.white))) ]))));
-    }
-    return Scaffold(appBar: AppBar(title: const Text('СЕЙФ [ВІДКРИТО]'), actions: [IconButton(icon: const Icon(Icons.lock_open, color: Colors.red), onPressed: () => setState(() { _unlocked = false; _mp.clear(); }))]), body: _v.isEmpty ? const Center(child: Text('СЕЙФ ПУСТИЙ', style: TextStyle(color: Colors.white24))) : ListView.builder(itemCount: _v.length, itemBuilder: (c, i) => Card(color: Colors.white.withOpacity(0.05), margin: const EdgeInsets.all(8), child: ListTile(leading: const Icon(Icons.security, color: Colors.yellow), title: Text(_v[i]['r']!, style: const TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold)), subtitle: Text("Логін: ${_v[i]['l']!}\nПароль: ${_v[i]['p']!}"), isThreeLine: true, trailing: Column(mainAxisAlignment: MainAxisAlignment.center, children: [IconButton(icon: const Icon(Icons.copy, size: 20, color: Colors.white), padding: EdgeInsets.zero, constraints: const BoxConstraints(), onPressed: () { Clipboard.setData(ClipboardData(text: _v[i]['p']!)); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Пароль скопійовано'))); }), const SizedBox(height: 8), IconButton(icon: const Icon(Icons.delete, size: 20, color: Colors.red), padding: EdgeInsets.zero, constraints: const BoxConstraints(), onPressed: () { setState(() => _v.removeAt(i)); _s(); })])))), floatingActionButton: FloatingActionButton(backgroundColor: const Color(0xFF0057B7), onPressed: _a, child: const Icon(Icons.add, color: Colors.white)));
-  }
-}
-
-// --- ЕКРАН ГЕНЕРАЦІЇ ПРОМПТІВ ---
-class GenScreen extends StatefulWidget {
-  final Prompt p; final Function(String) onLog;
-  const GenScreen({super.key, required this.p, required this.onLog});
-  @override State<GenScreen> createState() => _GenScreenState();
-}
-class _GenScreenState extends State<GenScreen> {
-  final Map<String, TextEditingController> _c = {}; bool _comp = false; List<TextSpan> _s = []; int _l = 0; Timer? _t;
-  final List<PromptEnhancer> _e = [
-    PromptEnhancer(name: 'CoT (Chain of Thought)', desc: 'Покрокове мислення', pros: 'Висока точність', cons: 'Довга відповідь', rec: 'Для логіки', payload: 'Пояснюй свій хід думок крок за кроком (Step-by-step) перед фінальною відповіддю.'),
-    PromptEnhancer(name: 'ToT (Tree of Thoughts)', desc: 'Дерево думок', pros: 'Аналіз гіпотез', cons: 'Повільно', rec: 'Коли мало даних', payload: 'Згенеруй 3 гіпотези. Проаналізуй кожну і обери найбільш імовірну.'),
-    PromptEnhancer(name: 'Persona (Експерт)', desc: 'Професійна роль', pros: 'Сухий стиль', cons: '-', rec: 'Для звітів', payload: 'Дій як старший OSINT-аналітик. Твоя відповідь має бути максимально точною, сухою, без емоцій.'),
-    PromptEnhancer(name: 'BLUF (Bottom Line Up Front)', desc: 'Висновок спочатку', pros: 'Економія часу', cons: 'Менше деталей', rec: 'Для керівництва', payload: 'Використовуй формат BLUF. Спочатку головний висновок в 1-2 речення, потім деталі.'),
-    PromptEnhancer(name: 'JSON Format', desc: 'Видача кодом', pros: 'Машинний формат', cons: 'Тільки текст', rec: 'Для екстракції', payload: 'Поверни результат ВИКЛЮЧНО у форматі валідного JSON. Без тексту до і після.'),
+  static const List<String> categories = [
+    'ФО', 'ЮО', 'ГЕОІНТ', 'МОНІТОРИНГ', 'ІНСТРУМЕНТИ', 'ДОКУМЕНТИ'
+  ];
+  static const List<IconData> categoryIcons = [
+    Icons.person_outline, Icons.business_outlined, Icons.map_outlined,
+    Icons.monitor_outlined, Icons.build_outlined, Icons.folder_outlined,
   ];
 
-  @override void initState() { 
-    super.initState(); 
-    final r = RegExp(r'\{([^}]+)\}'); 
-    for (var m in r.allMatches(widget.p.content)) _c[m.group(1)!] = TextEditingController(); 
-    if (_c.isEmpty) _compF();
-  }
-  
-  void _compF() {
-    _s.clear(); String t = widget.p.content; int last = 0; final r = RegExp(r'\{([^}]+)\}');
-    for (var m in r.allMatches(t)) {
-      if (m.start > last) _s.add(TextSpan(text: t.substring(last, m.start), style: const TextStyle(color: Colors.greenAccent)));
-      String v = _c[m.group(1)!]!.text; _s.add(TextSpan(text: v.isEmpty ? "{${m.group(1)}}" : v, style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold))); last = m.end;
-    }
-    if (last < t.length) _s.add(TextSpan(text: t.substring(last), style: const TextStyle(color: Colors.greenAccent)));
-    
-    final sel = _e.where((e) => e.isSelected).toList();
-    if (sel.isNotEmpty) {
-      _s.add(const TextSpan(text: "\n\n### SYSTEM_INSTRUCTIONS:\n", style: TextStyle(color: Colors.yellow, fontWeight: FontWeight.bold)));
-      for (var e in sel) _s.add(TextSpan(text: "- ${e.payload}\n", style: const TextStyle(color: Colors.yellow)));
-    }
-    
-    setState(() { _comp = true; _l = 0; }); _t?.cancel();
-    _t = Timer.periodic(const Duration(milliseconds: 5), (tm) { if (!mounted) return; setState(() { _l += 15; if (_l >= _s.map((e) => e.text!.length).fold(0, (a,b)=>a+b)) tm.cancel(); }); });
-    widget.onLog("Компіляція: ${widget.p.title}");
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: categories.length, vsync: this);
+    _tabController.addListener(() { if (mounted) setState(() {}); });
+    _loadData();
   }
 
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(widget.p.title)), body: Padding(padding: const EdgeInsets.all(16), child: Column(children: [
-    if (!_comp) ...[
-      Expanded(child: ListView(children: _c.keys.map((k) => Padding(padding: const EdgeInsets.only(bottom: 12), child: TextField(controller: _c[k], decoration: InputDecoration(labelText: k)))).toList())), 
-      const SizedBox(height: 10), 
-      ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7), minimumSize: const Size(double.infinity, 50)), onPressed: _compF, child: const Text('КОМПІЛЮВАТИ ЗАПИТ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))
-    ],
-    if (_comp) ...[
-      ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0A152F)), icon: const Icon(Icons.flash_on, color: Colors.yellow), label: const Text('ТАКТИЧНЕ ПІДСИЛЕННЯ', style: TextStyle(color: Colors.white)), onPressed: () {
-        showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: const Color(0xFF0A152F), builder: (c) => StatefulBuilder(builder: (cc, sM) => Container(padding: const EdgeInsets.all(16), height: MediaQuery.of(context).size.height * 0.8, child: Column(children: [
-          const Text('ПІДСИЛЕННЯ ПРОМПТУ', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.yellow, fontSize: 18)), const SizedBox(height: 10),
-          Expanded(child: ListView.builder(itemCount: _e.length, itemBuilder: (ccc, i) => Card(color: Colors.white.withOpacity(0.05), child: CheckTitle(title: Text(_e[i].name, style: const TextStyle(fontWeight: FontWeight.bold)), subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(_e[i].desc, style: const TextStyle(fontSize: 12)), const SizedBox(height: 4), Text("ПЕРЕВАГИ: ${_e[i].pros}", style: const TextStyle(fontSize: 10, color: Colors.greenAccent)), Text("РЕКОМЕНДОВАНО ДЛЯ: ${_e[i].rec}", style: const TextStyle(fontSize: 10, color: Colors.blueAccent))]), isThreeLine: true, value: _e[i].isSelected, onChanged: (v) { sM(() => _e[i].isSelected = v!); if (_comp) _compF(); })))),
-          const SizedBox(height: 10), ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7), minimumSize: const Size(double.infinity, 50)), onPressed: () => Navigator.pop(c), child: const Text('ЗАКРИТИ', style: TextStyle(color: Colors.white)))
-        ]))));
-      }), const SizedBox(height: 10),
-      Expanded(child: Container(width: double.infinity, padding: const EdgeInsets.all(12), color: Colors.black, child: SingleChildScrollView(child: RichText(text: TextSpan(children: _gV()))))), const SizedBox(height: 10),
-      Row(children: [
-        if (_c.isNotEmpty) Expanded(child: ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.white10), onPressed: () => setState(() => _comp = false), child: const Icon(Icons.refresh, color: Colors.white))), 
-        if (_c.isNotEmpty) const SizedBox(width: 10), 
-        Expanded(flex: 2, child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0057B7)), icon: const Icon(Icons.copy, size: 18, color: Colors.white), onPressed: () { Clipboard.setData(ClipboardData(text: _s.map((x) => x.text).join())); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Текст скопійовано!'))); }, label: const Text('COPY', style: TextStyle(color: Colors.white)))),
-        const SizedBox(width: 10),
-        Expanded(flex: 2, child: ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.green.shade700), icon: const Icon(Icons.send, size: 18, color: Colors.white), onPressed: () { final text = _s.map((x) => x.text).join(); Share.share(text); widget.onLog("Промпт: відправлено в LLM"); }, label: const Text('В LLM', style: TextStyle(color: Colors.white)))),
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  // ── Логування ──
+  void _logAction(String action) {
+    if (!mounted) return;
+    final now = DateTime.now();
+    final ts = "${now.day.toString().padLeft(2,'0')}.${now.month.toString().padLeft(2,'0')} "
+               "${now.hour.toString().padLeft(2,'0')}:${now.minute.toString().padLeft(2,'0')}";
+    setState(() {
+      auditLogs.insert(0, "[$ts] $action");
+      if (auditLogs.length > 100) auditLogs.removeLast();
+    });
+    _save();
+  }
+
+  // ── Завантаження даних ──
+  void _loadData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final pStr = prefs.getString('prompts_data');
+    final dStr = prefs.getString('docs_data');
+    final logs = prefs.getStringList('audit_logs');
+    if (!mounted) return;
+    setState(() {
+      if (pStr != null) {
+        try { prompts = (json.decode(pStr) as List).map((i) => Prompt.fromJson(i)).toList(); }
+        catch (_) { prompts = []; }
+      }
+      if (dStr != null) {
+        try { docs = (json.decode(dStr) as List).map((i) => PDFDoc.fromJson(i)).toList(); }
+        catch (_) { docs = []; }
+      }
+      if (logs != null) auditLogs = logs;
+      if (prompts.isEmpty) {
+        prompts = [
+          Prompt(
+            id: _uid(),
+            title: 'Аналіз фізичної особи',
+            category: 'ФО',
+            isFavorite: true,
+            content: 'Ти - аналітик OSINT. Проведи пошук:\n'
+                     'ПІБ — {ПІБ}\nДата народження — {дата_народження}\n'
+                     'Надай звіт по відкритих джерелах.',
+          ),
+        ];
+        _logAction("Створено базовий профіль");
+      }
+    });
+  }
+
+  // ── Збереження ──
+  void _save() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('prompts_data', json.encode(prompts.map((p) => p.toJson()).toList()));
+    await prefs.setString('docs_data',    json.encode(docs.map((d) => d.toJson()).toList()));
+    await prefs.setStringList('audit_logs', auditLogs.take(100).toList());
+  }
+
+  // ── Унікальний ID ──
+  String _uid() =>
+      '${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(9999).toString().padLeft(4,'0')}';
+
+  // ── Імпорт TXT ──
+  void _importFromTxt() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom, allowedExtensions: ['txt'],
+    );
+    if (result?.files.single.path == null) return;
+    try {
+      final content = await File(result!.files.single.path!).readAsString();
+      final List<Prompt> imported = [];
+      for (var block in content.split('===')) {
+        if (block.trim().isEmpty) continue;
+        String cat = 'МОНІТОРИНГ', title = '', text = '';
+        bool isText = false;
+        for (var line in block.trim().split('\n')) {
+          final lineLow = line.toLowerCase().trim();
+          if (lineLow.startsWith('категорія:')) {
+            final raw = lineLow.replaceFirst('категорія:', '').trim();
+            if (raw == 'фо' || raw.contains('фіз')) cat = 'ФО';
+            else if (raw == 'юо' || raw.contains('юр')) cat = 'ЮО';
+            else if (raw.contains('гео')) cat = 'ГЕОІНТ';
+            else if (raw.contains('мон')) cat = 'МОНІТОРИНГ';
+          } else if (lineLow.startsWith('назва:')) {
+            title = line.replaceFirst(RegExp(r'Назва:', caseSensitive: false), '').trim();
+          } else if (lineLow.startsWith('текст:')) {
+            text = line.replaceFirst(RegExp(r'Текст:', caseSensitive: false), '').trim();
+            isText = true;
+          } else if (isText) {
+            text += '\n$line';
+          }
+        }
+        if (title.isNotEmpty && text.isNotEmpty) {
+          imported.add(Prompt(id: _uid(), title: title, content: text.trim(), category: cat));
+        }
+      }
+      if (!mounted) return;
+      setState(() => prompts.addAll(imported));
+      _logAction("Імпортовано TXT (${imported.length} записів)");
+      _save();
+    } catch (e) {
+      _logAction("ERR: Помилка імпорту — $e");
+    }
+  }
+
+  // ── Додати / редагувати промпт ──
+  void _addOrEditPrompt({Prompt? p}) {
+    final tCtrl = TextEditingController(text: p?.title ?? '');
+    final cCtrl = TextEditingController(text: p?.content ?? '');
+    final editableCats = ['ФО', 'ЮО', 'ГЕОІНТ', 'МОНІТОРИНГ'];
+    String selectedCat = (p?.category != null && editableCats.contains(p!.category))
+        ? p.category
+        : editableCats[_tabController.index.clamp(0, editableCats.length - 1)];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setD) => AlertDialog(
+          title: Text(
+            p == null ? 'НОВИЙ ЗАПИС' : 'РЕДАГУВАННЯ',
+            style: const TextStyle(
+              fontWeight: FontWeight.w500, letterSpacing: 1.5, fontSize: 15,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              DropdownButtonFormField<String>(
+                value: selectedCat,
+                dropdownColor: AppColors.bgCard,
+                items: editableCats.map((c) => DropdownMenuItem(
+                  value: c,
+                  child: Text(c, style: const TextStyle(fontFamily: 'monospace')),
+                )).toList(),
+                onChanged: (v) => setD(() => selectedCat = v!),
+                decoration: const InputDecoration(labelText: 'КЛАСИФІКАЦІЯ'),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: tCtrl,
+                decoration: const InputDecoration(labelText: 'НАЗВА'),
+                style: const TextStyle(color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: cCtrl,
+                maxLines: 6,
+                decoration: const InputDecoration(
+                  labelText: 'ЗМІСТ  {змінні в фігурних дужках}',
+                  alignLabelWithHint: true,
+                ),
+                style: const TextStyle(
+                  fontFamily: 'monospace', fontSize: 13,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ]),
+          ),
+          actions: [
+            if (p != null)
+              TextButton(
+                onPressed: () => _confirmDelete(ctx, p),
+                child: const Text('ВИДАЛИТИ', style: TextStyle(color: AppColors.danger)),
+              ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('СКАСУВАТИ', style: TextStyle(color: AppColors.textSecondary)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (tCtrl.text.trim().isEmpty) return;
+                setState(() {
+                  if (p == null) {
+                    prompts.add(Prompt(
+                      id: _uid(), title: tCtrl.text.trim(),
+                      content: cCtrl.text.trim(), category: selectedCat,
+                    ));
+                    _logAction("Створено: ${tCtrl.text.trim()}");
+                  } else {
+                    p.title = tCtrl.text.trim();
+                    p.content = cCtrl.text.trim();
+                    p.category = selectedCat;
+                    _logAction("Оновлено: ${tCtrl.text.trim()}");
+                  }
+                });
+                _save();
+                Navigator.pop(ctx);
+              },
+              child: const Text('ЗАПИСАТИ'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _confirmDelete(BuildContext ctx, Prompt p) {
+    Navigator.pop(ctx);
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('ВИДАЛЕННЯ', style: TextStyle(color: AppColors.danger)),
+        content: Text('Видалити "${p.title}"?',
+            style: const TextStyle(color: AppColors.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('СКАСУВАТИ', style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
+            onPressed: () {
+              setState(() => prompts.remove(p));
+              _logAction("Видалено: ${p.title}");
+              _save();
+              Navigator.pop(context);
+            },
+            child: const Text('ВИДАЛИТИ'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Імпорт PDF ──
+  void _pickPDF() async {
+    final r = await FilePicker.platform.pickFiles(
+      type: FileType.custom, allowedExtensions: ['pdf'],
+    );
+    if (r?.files.single.path == null) return;
+    final dir = await getApplicationDocumentsDirectory();
+    final name = r!.files.single.name;
+    final newPath = '${dir.path}/${DateTime.now().millisecondsSinceEpoch}_$name';
+    await File(r.files.single.path!).copy(newPath);
+    if (!mounted) return;
+    setState(() => docs.add(PDFDoc(id: _uid(), name: name, path: newPath)));
+    _logAction("Додано документ: $name");
+    _save();
+  }
+
+  // ── SYS.INFO (пасхалка) ──
+  void _showSysInfo() {
+    _secretCounter = 0;
+    final stats = <String, int>{'ФО': 0, 'ЮО': 0, 'ГЕОІНТ': 0, 'МОНІТОРИНГ': 0};
+    for (var p in prompts) {
+      if (stats.containsKey(p.category)) stats[p.category] = stats[p.category]! + 1;
+    }
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(children: [
+          GestureDetector(
+            onTap: () {
+              _secretCounter++;
+              if (_secretCounter >= 5) {
+                Navigator.pop(ctx);
+                _logAction("SYS: Операція БАВОВНА активована!");
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => CottonGame(onLog: _logAction)));
+              }
+            },
+            child: const Icon(Icons.analytics, color: AppColors.uaYellow),
+          ),
+          const SizedBox(width: 10),
+          const Text('SYS.INFO', style: TextStyle(
+            fontFamily: 'monospace', fontWeight: FontWeight.w500, fontSize: 15,
+          )),
+        ]),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          _infoRow('TOTAL RECORDS', prompts.length.toString()),
+          _infoRow('SECURE DOCS',   docs.length.toString()),
+          const Divider(color: AppColors.border, height: 20),
+          _infoRow('ФО',         stats['ФО'].toString()),
+          _infoRow('ЮО',         stats['ЮО'].toString()),
+          _infoRow('ГЕОІНТ',     stats['ГЕОІНТ'].toString()),
+          _infoRow('МОНІТОРИНГ', stats['МОНІТОРИНГ'].toString()),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('CLOSE', style: TextStyle(color: AppColors.uaYellow)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoRow(String label, String value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 5),
+    child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+      Text(label, style: const TextStyle(
+        color: AppColors.textSecondary, fontFamily: 'monospace', fontSize: 13,
+      )),
+      Text(value, style: const TextStyle(
+        color: AppColors.accent, fontFamily: 'monospace',
+        fontWeight: FontWeight.w500, fontSize: 16,
+      )),
+    ]),
+  );
+
+  // ── Аудит-лог ──
+  void _showAuditLog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(children: [
+          Icon(Icons.terminal, color: AppColors.textSecondary),
+          SizedBox(width: 10),
+          Text('AUDIT_LOG', style: TextStyle(fontFamily: 'monospace', fontSize: 15)),
+        ]),
+        content: SizedBox(
+          width: double.maxFinite, height: 300,
+          child: auditLogs.isEmpty
+              ? const Center(child: Text('NO RECORDS',
+                  style: TextStyle(color: AppColors.textHint)))
+              : ListView.builder(
+                  itemCount: auditLogs.length,
+                  itemBuilder: (_, i) => Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: Text(auditLogs[i], style: const TextStyle(
+                      color: AppColors.success, fontFamily: 'monospace', fontSize: 11,
+                    )),
+                  ),
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              setState(() { auditLogs.clear(); _save(); });
+              Navigator.pop(ctx);
+            },
+            child: const Text('CLEAR', style: TextStyle(color: AppColors.danger)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('CLOSE', style: TextStyle(color: AppColors.textSecondary)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Список промптів з пошуком ──
+  List<Prompt> _filteredPrompts(String category) {
+    var items = prompts.where((p) => p.category == category).toList();
+    if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery.toLowerCase();
+      items = items.where((p) =>
+        p.title.toLowerCase().contains(q) ||
+        p.content.toLowerCase().contains(q)
+      ).toList();
+    }
+    items.sort((a, b) => (b.isFavorite ? 1 : 0).compareTo(a.isFavorite ? 1 : 0));
+    return items;
+  }
+
+  // ── APPBAR ──
+  PreferredSizeWidget _buildAppBar() {
+    if (_searchActive) {
+      return AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: AppColors.textSecondary),
+          onPressed: () {
+            setState(() {
+              _searchActive = false;
+              _searchQuery = '';
+              _searchCtrl.clear();
+            });
+          },
+        ),
+        title: TextField(
+          controller: _searchCtrl,
+          autofocus: true,
+          style: const TextStyle(color: AppColors.textPrimary, fontSize: 15),
+          decoration: const InputDecoration(
+            hintText: 'Пошук по записах...',
+            hintStyle: TextStyle(color: AppColors.textHint),
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            filled: false,
+          ),
+          onChanged: (v) => setState(() => _searchQuery = v),
+        ),
+        bottom: _buildTabBar(),
+      );
+    }
+
+    return AppBar(
+      title: Row(mainAxisSize: MainAxisSize.min, children: [
+        const Text('🔱', style: TextStyle(fontSize: 20)),
+        const SizedBox(width: 8),
+        const Text('UKR_OSINT', style: TextStyle(
+          fontWeight: FontWeight.w500, letterSpacing: 2.5, fontSize: 17,
+          color: AppColors.uaYellow,
+        )),
       ]),
-    ]
-  ])));
-  List<TextSpan> _gV() { List<TextSpan> r = []; int c = 0; for (var x in _s) { if (c + x.text!.length <= _l) { r.add(x); c += x.text!.length; } else { r.add(TextSpan(text: x.text!.substring(0, _l - c), style: x.style)); break; } } return r; }
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.search, color: AppColors.textSecondary, size: 22),
+          onPressed: () => setState(() => _searchActive = true),
+          tooltip: 'Пошук',
+        ),
+        IconButton(
+          icon: const Icon(Icons.analytics_outlined, color: AppColors.uaYellow, size: 22),
+          onPressed: _showSysInfo,
+          tooltip: 'SYS.INFO',
+        ),
+        IconButton(
+          icon: const Icon(Icons.receipt_long, color: AppColors.textSecondary, size: 22),
+          onPressed: _showAuditLog,
+          tooltip: 'Аудит-лог',
+        ),
+        IconButton(
+          icon: const Icon(Icons.download_outlined, color: AppColors.accent, size: 22),
+          onPressed: _importFromTxt,
+          tooltip: 'Імпорт TXT',
+        ),
+      ],
+      bottom: _buildTabBar(),
+    );
+  }
+
+  TabBar _buildTabBar() => TabBar(
+    controller: _tabController,
+    isScrollable: true,
+    tabAlignment: TabAlignment.start,
+    tabs: List.generate(categories.length, (i) => Tab(
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(categoryIcons[i], size: 14),
+        const SizedBox(width: 5),
+        Text(categories[i], style: const TextStyle(fontSize: 12, letterSpacing: 0.5)),
+      ]),
+    )),
+  );
+
+  // ── БУДІВЛЯ СПИСКУ ──
+  Widget _buildPromptList(String cat) {
+    final items = _filteredPrompts(cat);
+
+    if (items.isEmpty) {
+      return Center(
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(
+            _searchQuery.isNotEmpty ? Icons.search_off : Icons.inbox_outlined,
+            color: AppColors.textHint, size: 48,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _searchQuery.isNotEmpty ? 'Нічого не знайдено' : 'Поки що порожньо',
+            style: const TextStyle(color: AppColors.textHint, fontSize: 14),
+          ),
+          if (_searchQuery.isEmpty) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Натисніть + щоб додати запис',
+              style: TextStyle(color: AppColors.textHint, fontSize: 12),
+            ),
+          ]
+        ]),
+      );
+    }
+
+    return ReorderableListView.builder(
+      padding: const EdgeInsets.only(top: 8, bottom: 90),
+      itemCount: items.length,
+      onReorder: _searchQuery.isNotEmpty
+          ? (_, __) {} // Не реордеримо під час пошуку
+          : (oldIdx, newIdx) {
+              setState(() {
+                if (newIdx > oldIdx) newIdx -= 1;
+                final item = items.removeAt(oldIdx);
+                items.insert(newIdx, item);
+                prompts.removeWhere((p) => p.category == cat);
+                prompts.addAll(items);
+              });
+              _save();
+            },
+      itemBuilder: (ctx, i) {
+        final p = items[i];
+        return _PromptCard(
+          key: ValueKey(p.id),
+          prompt: p,
+          onTap: () => Navigator.push(context, MaterialPageRoute(
+            builder: (_) => GenScreen(p: p, onLog: _logAction),
+          )),
+          onLongPress: () => _addOrEditPrompt(p: p),
+          onFavorite: () { setState(() => p.isFavorite = !p.isFavorite); _save(); },
+        );
+      },
+    );
+  }
+
+  // ── ДОКУМЕНТИ ──
+  Widget _buildDocList() {
+    if (docs.isEmpty) {
+      return const Center(child: Column(
+        mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(Icons.folder_open, color: AppColors.textHint, size: 48),
+          SizedBox(height: 12),
+          Text('Документів немає', style: TextStyle(color: AppColors.textHint, fontSize: 14)),
+          SizedBox(height: 8),
+          Text('Натисніть + щоб додати PDF', style: TextStyle(color: AppColors.textHint, fontSize: 12)),
+        ],
+      ));
+    }
+    return ListView.builder(
+      itemCount: docs.length,
+      padding: const EdgeInsets.only(top: 8, bottom: 90),
+      itemBuilder: (ctx, i) => Card(
+        color: Colors.white.withValues(alpha: 0.03),
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: AppColors.border),
+        ),
+        child: ListTile(
+          leading: Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(
+              color: AppColors.uaBlue.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.picture_as_pdf, color: AppColors.accent, size: 22),
+          ),
+          title: Text(docs[i].name,
+              style: const TextStyle(fontSize: 13, color: AppColors.textPrimary)),
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => PDFViewerScreen(doc: docs[i]))),
+          trailing: IconButton(
+            icon: const Icon(Icons.close, color: AppColors.textHint, size: 18),
+            onPressed: () => showDialog(
+              context: context,
+              builder: (_) => AlertDialog(
+                title: const Text('Видалити документ?',
+                    style: TextStyle(color: AppColors.textPrimary, fontSize: 15)),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Ні', style: TextStyle(color: AppColors.textSecondary)),
+                  ),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
+                    onPressed: () {
+                      setState(() => docs.removeAt(i));
+                      _logAction("Видалено документ: ${docs[i].name}");
+                      _save();
+                      Navigator.pop(context);
+                    },
+                    child: const Text('Видалити'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── ДЕКОРАТИВНА ЛІНІЯ (українська символіка) ──
+  Widget _buildUaStripe() => Container(
+    height: 2,
+    decoration: const BoxDecoration(
+      gradient: LinearGradient(
+        colors: [AppColors.uaBlue, AppColors.uaBlue, AppColors.uaYellow, AppColors.uaYellow],
+        stops: [0, 0.5, 0.5, 1],
+      ),
+    ),
+  );
+
+  // ── FAB ──
+  Widget? _buildFab() {
+    final idx = _tabController.index;
+    if (idx == categories.indexOf('ІНСТРУМЕНТИ')) return null;
+    return FloatingActionButton(
+      backgroundColor: AppColors.uaBlue,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: const BorderSide(color: AppColors.uaYellow, width: 1.5),
+      ),
+      onPressed: () {
+        if (idx == categories.indexOf('ДОКУМЕНТИ')) {
+          _pickPDF();
+        } else {
+          _addOrEditPrompt();
+        }
+      },
+      child: Icon(
+        idx == categories.indexOf('ДОКУМЕНТИ') ? Icons.note_add : Icons.add,
+        color: Colors.white,
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      extendBodyBehindAppBar: true,
+      appBar: _buildAppBar(),
+      floatingActionButton: _buildFab(),
+      body: Column(children: [
+        Expanded(
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [AppColors.bgDeep, Color(0xFF091630), AppColors.bg],
+              ),
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Column(children: [
+                _buildUaStripe(),
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: categories.map((cat) {
+                      if (cat == 'ДОКУМЕНТИ')   return _buildDocList();
+                      if (cat == 'ІНСТРУМЕНТИ') return ToolsMenuScreen(onLog: _logAction);
+                      return _buildPromptList(cat);
+                    }).toList(),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
 }
 
-class CheckTitle extends StatelessWidget { final Widget title; final Widget subtitle; final bool value; final bool isThreeLine; final Function(bool?) onChanged; const CheckTitle({super.key, required this.title, required this.subtitle, required this.value, required this.isThreeLine, required this.onChanged}); @override Widget build(BuildContext context) { return CheckboxListTile(title: title, subtitle: subtitle, value: value, onChanged: onChanged, isThreeLine: isThreeLine); } }
+// ─────────────────────────────────────────────
+// КАРТКА ПРОМПТУ
+// ─────────────────────────────────────────────
+class _PromptCard extends StatelessWidget {
+  final Prompt prompt;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
+  final VoidCallback onFavorite;
 
-class PDFViewerScreen extends StatelessWidget { final PDFDoc doc; const PDFViewerScreen({super.key, required this.doc}); @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(doc.name)), body: PDFView(filePath: doc.path)); }
+  const _PromptCard({
+    super.key,
+    required this.prompt,
+    required this.onTap,
+    required this.onLongPress,
+    required this.onFavorite,
+  });
+
+  String _fmtDate(DateTime d) =>
+      "${d.day.toString().padLeft(2,'0')}.${d.month.toString().padLeft(2,'0')}";
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: Colors.white.withValues(alpha: prompt.isFavorite ? 0.04 : 0.02),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(
+          color: prompt.isFavorite
+              ? AppColors.uaYellow.withValues(alpha: 0.3)
+              : AppColors.border,
+        ),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        onLongPress: onLongPress,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              // Категорійний пілюль
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.uaBlue.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: AppColors.uaBlue.withValues(alpha: 0.4)),
+                ),
+                child: Text(prompt.category,
+                    style: const TextStyle(
+                      fontSize: 9, letterSpacing: 0.8, color: AppColors.accent,
+                    )),
+              ),
+              const SizedBox(width: 8),
+              Text(_fmtDate(prompt.createdAt),
+                  style: const TextStyle(fontSize: 10, color: AppColors.textHint)),
+              const Spacer(),
+              GestureDetector(
+                onTap: onFavorite,
+                child: Icon(
+                  prompt.isFavorite ? Icons.star_rounded : Icons.star_border_rounded,
+                  color: prompt.isFavorite ? AppColors.uaYellow : AppColors.textHint,
+                  size: 20,
+                ),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            Text(prompt.title,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w500, fontSize: 14,
+                  color: AppColors.textPrimary,
+                )),
+            const SizedBox(height: 4),
+            Text(
+              prompt.content,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.textHint, fontFamily: 'monospace', fontSize: 11,
+              ),
+            ),
+            // Теги змінних
+            if (prompt.variables.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(spacing: 4, runSpacing: 4,
+                children: prompt.variables.take(4).map((v) => Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Text('{$v}',
+                      style: const TextStyle(
+                        fontSize: 9, color: AppColors.textSecondary, fontFamily: 'monospace',
+                      )),
+                )).toList(),
+              ),
+            ],
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// МЕНЮ ІНСТРУМЕНТІВ
+// ─────────────────────────────────────────────
+class ToolsMenuScreen extends StatelessWidget {
+  final Function(String) onLog;
+  const ToolsMenuScreen({super.key, required this.onLog});
+
+  @override
+  Widget build(BuildContext context) {
+    final tools = [
+      _ToolItem('СКАНЕР', 'Екстракція артефактів з тексту', Icons.radar,
+          ScannerScreen(onLog: onLog)),
+      _ToolItem('EXIF', 'Аналіз метаданих зображень', Icons.image_search,
+          ExifScreen(onLog: onLog)),
+      _ToolItem('DORKS', 'Google Dorks конструктор', Icons.travel_explore,
+          DorksScreen(onLog: onLog)),
+    ];
+
+    return ListView(
+      padding: const EdgeInsets.only(top: 16, bottom: 90),
+      children: tools.map((t) => Card(
+        color: Colors.white.withValues(alpha: 0.02),
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: AppColors.border),
+        ),
+        child: ListTile(
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          leading: Container(
+            width: 44, height: 44,
+            decoration: BoxDecoration(
+              color: AppColors.uaBlue.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(t.icon, color: AppColors.uaYellow, size: 22),
+          ),
+          title: Text(t.title,
+              style: const TextStyle(
+                fontWeight: FontWeight.w500, letterSpacing: 0.8, fontSize: 14,
+              )),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: Text(t.subtitle,
+                style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          ),
+          trailing: const Icon(Icons.chevron_right, color: AppColors.textHint),
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => t.screen)),
+        ),
+      )).toList(),
+    );
+  }
+}
+
+class _ToolItem {
+  final String title, subtitle;
+  final IconData icon;
+  final Widget screen;
+  _ToolItem(this.title, this.subtitle, this.icon, this.screen);
+}
+
+// ─────────────────────────────────────────────
+// СКАНЕР — розширений
+// ─────────────────────────────────────────────
+class ScannerScreen extends StatefulWidget {
+  final Function(String) onLog;
+  const ScannerScreen({super.key, required this.onLog});
+  @override
+  State<ScannerScreen> createState() => _ScannerScreenState();
+}
+
+class _ScannerScreenState extends State<ScannerScreen> {
+  final _ctrl = TextEditingController();
+  Map<String, List<String>> _results = {};
+  bool _scanning = false;
+  String _matrixChar = '';
+  Timer? _matrixTimer;
+
+  // Іконка та колір для кожного типу артефакту
+  static const _typeConfig = {
+    'IP':       (_ScanType(Icons.dns_outlined,        Color(0xFF6FA8DC), 'IP-адреси')),
+    'EMAIL':    (_ScanType(Icons.alternate_email,     Color(0xFF80D8B0), 'Електронні адреси')),
+    'PHONE':    (_ScanType(Icons.phone_outlined,      Color(0xFFE8A05A), 'Телефони')),
+    'URL':      (_ScanType(Icons.link,                Color(0xFFA78BFA), 'Посилання')),
+    'GPS':      (_ScanType(Icons.location_on_outlined,Color(0xFF4ADE80), 'Координати GPS')),
+    'HASH':     (_ScanType(Icons.tag,                 Color(0xFFFF6B6B), 'Хеші')),
+    'CARD':     (_ScanType(Icons.credit_card_outlined,Color(0xFFFFD700), 'Картки/рахунки')),
+  };
+
+  @override
+  void dispose() {
+    _matrixTimer?.cancel();
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _scan() async {
+    FocusScope.of(context).unfocus();
+    setState(() { _scanning = true; _results.clear(); });
+
+    // Анімація "матриця"
+    _matrixTimer = Timer.periodic(const Duration(milliseconds: 60), (_) {
+      if (mounted) setState(() {
+        const chars = '01XYZ#@!?';
+        _matrixChar = chars[Random().nextInt(chars.length)];
+      });
+    });
+
+    await Future.delayed(const Duration(milliseconds: 1200));
+    final text = _ctrl.text;
+
+    final found = <String, List<String>>{};
+
+    void extract(String key, RegExp re) {
+      final matches = re.allMatches(text).map((m) => m.group(0)!).toSet().toList();
+      if (matches.isNotEmpty) found[key] = matches;
+    }
+
+    extract('IP',    RegExp(r'\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b'));
+    extract('EMAIL', RegExp(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}'));
+    extract('PHONE', RegExp(r'(?:\+?38|8)?[\s\-]?\(?0\d{2}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}|(?:\+\d{1,3}[\s\-]?)?\(?\d{2,4}\)?[\s\-]?\d{3,4}[\s\-]?\d{3,4}'));
+    extract('URL',   RegExp(r'https?://[^\s<>"{}|\\^`\[\]]+'));
+    extract('GPS',   RegExp(r'[-+]?(?:[1-8]?\d(?:\.\d+)?|90(?:\.0+)?)[,\s]+[-+]?(?:180(?:\.0+)?|(?:(?:1[0-7]\d)|(?:[1-9]?\d))(?:\.\d+)?)'));
+    extract('HASH',  RegExp(r'\b[0-9a-fA-F]{32}\b|\b[0-9a-fA-F]{40}\b|\b[0-9a-fA-F]{64}\b'));
+    extract('CARD',  RegExp(r'\b(?:UA\d{25}|\d{4}[\s\-]\d{4}[\s\-]\d{4}[\s\-]\d{4})\b'));
+
+    _matrixTimer?.cancel();
+    if (!mounted) return;
+    setState(() { _scanning = false; _results = found; });
+    final total = found.values.fold(0, (s, v) => s + v.length);
+    widget.onLog("СКАНЕР: знайдено $total артефактів у ${found.length} категоріях");
+  }
+
+  void _copyAll() {
+    final all = _results.entries
+        .map((e) => '=== ${e.key} ===\n${e.value.join('\n')}')
+        .join('\n\n');
+    Clipboard.setData(ClipboardData(text: all));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Скопійовано всі артефакти'),
+        backgroundColor: AppColors.uaBlue,
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      appBar: AppBar(
+        title: const Text('СКАНЕР'),
+        actions: [
+          if (_results.isNotEmpty)
+            TextButton.icon(
+              onPressed: _copyAll,
+              icon: const Icon(Icons.copy_all, size: 16, color: AppColors.uaYellow),
+              label: const Text('COPY ALL',
+                  style: TextStyle(color: AppColors.uaYellow, fontSize: 12)),
+            ),
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(children: [
+          TextField(
+            controller: _ctrl,
+            maxLines: 5,
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: AppColors.textPrimary),
+            decoration: const InputDecoration(
+              hintText: 'Вставте текст для аналізу...',
+              alignLabelWithHint: true,
+            ),
+          ),
+          const SizedBox(height: 10),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.radar, size: 18),
+            label: const Text('ЕКСТРАКЦІЯ АРТЕФАКТІВ',
+                style: TextStyle(letterSpacing: 1, fontWeight: FontWeight.w500)),
+            onPressed: _scan,
+          ),
+          const SizedBox(height: 16),
+          Expanded(child: _scanning
+              ? Center(child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center, children: [
+                    Text(_matrixChar,
+                        style: const TextStyle(
+                          color: AppColors.success, fontSize: 42,
+                          fontFamily: 'monospace', fontWeight: FontWeight.bold,
+                        )),
+                    const SizedBox(height: 12),
+                    const Text('SCANNING...',
+                        style: TextStyle(color: AppColors.textHint,
+                            fontFamily: 'monospace', fontSize: 13)),
+                  ],
+                ))
+              : _results.isEmpty
+                  ? const Center(child: Text(
+                      'Введіть текст і запустіть аналіз',
+                      style: TextStyle(color: AppColors.textHint, fontSize: 13),
+                    ))
+                  : ListView(
+                      children: _results.entries.map((entry) {
+                        final cfg = _typeConfig[entry.key];
+                        final icon  = cfg?.icon  ?? Icons.tag;
+                        final color = cfg?.color ?? AppColors.accent;
+                        final label = cfg?.label ?? entry.key;
+                        return _ScanSection(
+                          icon: icon, color: color, label: label,
+                          items: entry.value,
+                        );
+                      }).toList(),
+                    ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+class _ScanType {
+  final IconData icon;
+  final Color color;
+  final String label;
+  const _ScanType(this.icon, this.color, this.label);
+}
+
+class _ScanSection extends StatelessWidget {
+  final IconData icon;
+  final Color color;
+  final String label;
+  final List<String> items;
+
+  const _ScanSection({
+    required this.icon, required this.color,
+    required this.label, required this.items,
+  });
+
+  void _copyItem(BuildContext ctx, String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+      content: Text('Скопійовано: $text'),
+      backgroundColor: AppColors.uaBlue,
+      duration: const Duration(seconds: 1),
+    ));
+  }
+
+  void _copySection(BuildContext ctx) {
+    Clipboard.setData(ClipboardData(text: items.join('\n')));
+    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+      content: Text('Скопійовано $label (${items.length})'),
+      backgroundColor: AppColors.uaBlue,
+      duration: const Duration(seconds: 1),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.02),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(children: [
+        // Заголовок секції
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(children: [
+            Container(
+              width: 32, height: 32,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: Icon(icon, color: color, size: 17),
+            ),
+            const SizedBox(width: 10),
+            Text(label,
+                style: const TextStyle(
+                  fontSize: 12, letterSpacing: 0.5,
+                  color: AppColors.textSecondary,
+                )),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text('${items.length}',
+                  style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w500)),
+            ),
+          ]),
+        ),
+        const Divider(color: AppColors.border, height: 0),
+        // Результати
+        ...items.map((v) => InkWell(
+          onTap: () => _copyItem(context, v),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(children: [
+              Expanded(
+                child: Text(v,
+                    style: const TextStyle(
+                      fontFamily: 'monospace', fontSize: 12,
+                      color: AppColors.textPrimary,
+                    )),
+              ),
+              const Text('copy',
+                  style: TextStyle(
+                    fontSize: 10, color: AppColors.uaYellow,
+                    letterSpacing: 0.5,
+                  )),
+            ]),
+          ),
+        )),
+        // Копіювати секцію
+        InkWell(
+          onTap: () => _copySection(context),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: AppColors.border)),
+            ),
+            child: const Text(
+              '+ copy all',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11, color: AppColors.accent, letterSpacing: 0.5,
+              ),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// EXIF АНАЛІЗАТОР
+// ─────────────────────────────────────────────
+class ExifScreen extends StatefulWidget {
+  final Function(String) onLog;
+  const ExifScreen({super.key, required this.onLog});
+  @override
+  State<ExifScreen> createState() => _ExifScreenState();
+}
+
+class _ExifScreenState extends State<ExifScreen> {
+  Map<String, IfdTag> _data = {};
+  bool _loading = false;
+  String? _fileName;
+
+  void _pick() async {
+    final r = await FilePicker.platform.pickFiles(type: FileType.image);
+    if (r?.files.single.path == null) return;
+    setState(() { _loading = true; _fileName = r!.files.single.name; });
+    try {
+      final bytes = await File(r!.files.single.path!).readAsBytes();
+      final tags  = await readExifFromBytes(bytes);
+      if (!mounted) return;
+      setState(() { _data = tags; _loading = false; });
+      widget.onLog("EXIF: ${r.files.single.name} — ${tags.length} тегів");
+    } catch (e) {
+      if (!mounted) return;
+      setState(() { _loading = false; });
+      widget.onLog("EXIF ERR: $e");
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      appBar: AppBar(title: const Text('EXIF АНАЛІЗАТОР')),
+      body: Column(children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.image_search, size: 18),
+            label: Text(_fileName != null ? _fileName! : 'ОБРАТИ ЗОБРАЖЕННЯ',
+                overflow: TextOverflow.ellipsis),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.uaBlue),
+            onPressed: _pick,
+          ),
+        ),
+        Expanded(child: _loading
+            ? const Center(child: CircularProgressIndicator(color: AppColors.uaYellow))
+            : _data.isEmpty
+                ? const Center(child: Text('Оберіть зображення для аналізу',
+                    style: TextStyle(color: AppColors.textHint)))
+                : ListView(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    children: _data.entries.map((e) => Card(
+                      color: Colors.white.withValues(alpha: 0.02),
+                      margin: const EdgeInsets.only(bottom: 4),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        side: const BorderSide(color: AppColors.border),
+                      ),
+                      child: ListTile(
+                        dense: true,
+                        title: Text(e.key,
+                            style: const TextStyle(
+                              fontSize: 12, color: AppColors.accent,
+                              fontFamily: 'monospace',
+                            )),
+                        subtitle: Text(e.value.toString(),
+                            style: const TextStyle(
+                              fontSize: 11, color: AppColors.textSecondary,
+                            )),
+                        onTap: () => Clipboard.setData(
+                            ClipboardData(text: '${e.key}: ${e.value}')),
+                      ),
+                    )).toList(),
+                  ),
+        ),
+      ]),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// GOOGLE DORKS
+// ─────────────────────────────────────────────
+class DorksScreen extends StatefulWidget {
+  final Function(String) onLog;
+  const DorksScreen({super.key, required this.onLog});
+  @override
+  State<DorksScreen> createState() => _DorksScreenState();
+}
+
+class _DorksScreenState extends State<DorksScreen> {
+  final _ctrl = TextEditingController();
+  List<_DorkItem> _dorks = [];
+
+  static const _templates = [
+    _DorkTemplate('Файли (PDF, SQL, DB)', Icons.insert_drive_file, [
+      'site:{d} ext:pdf', 'site:{d} ext:sql OR ext:db OR ext:bak',
+      'site:{d} ext:xlsx OR ext:csv', 'site:{d} ext:env OR ext:config',
+    ]),
+    _DorkTemplate('Панелі адміністратора', Icons.admin_panel_settings, [
+      'site:{d} inurl:admin', 'site:{d} inurl:login OR inurl:signin',
+      'site:{d} inurl:wp-admin', 'site:{d} inurl:dashboard',
+    ]),
+    _DorkTemplate('Відкриті директорії', Icons.folder_open, [
+      'site:{d} intitle:"index of"',
+      'site:{d} intitle:"index of" parent directory',
+      'site:{d} intitle:"directory listing"',
+    ]),
+    _DorkTemplate('Витоки даних', Icons.leak_add, [
+      'site:{d} "password" ext:txt', 'site:{d} "api_key" OR "secret_key"',
+      'site:{d} intext:"@gmail.com" ext:txt',
+      'site:{d} "DB_PASSWORD" OR "DB_USER"',
+    ]),
+    _DorkTemplate('Камери / IoT', Icons.videocam_outlined, [
+      'site:{d} inurl:"/view/index.shtml"',
+      'site:{d} inurl:":8080"', 'site:{d} intitle:"webcam"',
+    ]),
+    _DorkTemplate('Соцмережі та сліди', Icons.manage_search, [
+      'site:linkedin.com "{d}"', 'site:facebook.com "{d}"',
+      'site:github.com "{d}"', '"@{d}" email',
+    ]),
+  ];
+
+  void _generate() {
+    final t = _ctrl.text.trim();
+    if (t.isEmpty) return;
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _dorks = _templates.expand((tmpl) =>
+        tmpl.patterns.map((p) => _DorkItem(
+          query: p.replaceAll('{d}', t),
+          category: tmpl.label,
+          icon: tmpl.icon,
+        ))
+      ).toList();
+    });
+    widget.onLog("DORKS: згенеровано ${_dorks.length} для $t");
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      appBar: AppBar(
+        title: const Text('GOOGLE DORKS'),
+        actions: [
+          if (_dorks.isNotEmpty)
+            TextButton(
+              onPressed: () {
+                final all = _dorks.map((d) => d.query).join('\n');
+                Clipboard.setData(ClipboardData(text: all));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                  content: Text('Скопійовано всі dorks'),
+                  backgroundColor: AppColors.uaBlue,
+                ));
+              },
+              child: const Text('COPY ALL',
+                  style: TextStyle(color: AppColors.uaYellow, fontSize: 12)),
+            ),
+        ],
+      ),
+      body: Column(children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _ctrl,
+                style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                decoration: const InputDecoration(
+                  labelText: 'Домен або ціль',
+                  hintText: 'example.com',
+                  prefixIcon: Icon(Icons.travel_explore, size: 18, color: AppColors.accent),
+                ),
+                onSubmitted: (_) => _generate(),
+              ),
+            ),
+            const SizedBox(width: 10),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(0, 56),
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+              ),
+              onPressed: _generate,
+              child: const Text('GO'),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        Expanded(child: _dorks.isEmpty
+            ? const Center(child: Text('Введіть домен і натисніть GO',
+                style: TextStyle(color: AppColors.textHint)))
+            : ListView.builder(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 90),
+                itemCount: _dorks.length,
+                itemBuilder: (ctx, i) {
+                  final d = _dorks[i];
+                  final showHeader = i == 0 || _dorks[i-1].category != d.category;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (showHeader) Padding(
+                        padding: const EdgeInsets.only(top: 14, bottom: 6, left: 4),
+                        child: Row(children: [
+                          Icon(d.icon, size: 14, color: AppColors.uaYellow),
+                          const SizedBox(width: 6),
+                          Text(d.category,
+                              style: const TextStyle(
+                                fontSize: 11, color: AppColors.uaYellow,
+                                letterSpacing: 0.8,
+                              )),
+                        ]),
+                      ),
+                      Card(
+                        color: Colors.white.withValues(alpha: 0.02),
+                        margin: const EdgeInsets.only(bottom: 4),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: const BorderSide(color: AppColors.border),
+                        ),
+                        child: ListTile(
+                          dense: true,
+                          title: Text(d.query,
+                              style: const TextStyle(
+                                fontFamily: 'monospace', fontSize: 11,
+                                color: AppColors.textPrimary,
+                              )),
+                          trailing: const Icon(Icons.copy_outlined,
+                              size: 15, color: AppColors.textHint),
+                          onTap: () {
+                            Clipboard.setData(ClipboardData(text: d.query));
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                              content: Text(d.query, style: const TextStyle(fontSize: 11)),
+                              backgroundColor: AppColors.uaBlue,
+                              duration: const Duration(seconds: 1),
+                            ));
+                          },
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+        ),
+      ]),
+    );
+  }
+}
+
+class _DorkTemplate {
+  final String label;
+  final IconData icon;
+  final List<String> patterns;
+  const _DorkTemplate(this.label, this.icon, this.patterns);
+}
+
+class _DorkItem {
+  final String query, category;
+  final IconData icon;
+  const _DorkItem({required this.query, required this.category, required this.icon});
+}
+
+// ─────────────────────────────────────────────
+// PDF ПЕРЕГЛЯДАЧ
+// ─────────────────────────────────────────────
+class PDFViewerScreen extends StatelessWidget {
+  final PDFDoc doc;
+  const PDFViewerScreen({super.key, required this.doc});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.bg,
+      appBar: AppBar(title: Text(doc.name, overflow: TextOverflow.ellipsis)),
+      body: PDFView(filePath: doc.path),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// ГЕНЕРАТОР ПРОМПТІВ
+// ─────────────────────────────────────────────
+class GenScreen extends StatefulWidget {
+  final Prompt p;
+  final Function(String) onLog;
+  const GenScreen({super.key, required this.p, required this.onLog});
+  @override
+  State<GenScreen> createState() => _GenScreenState();
+}
+
+class _GenScreenState extends State<GenScreen> {
+  final Map<String, TextEditingController> _ctrls = {};
+  String _result = '';
+  bool _compiled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _result = widget.p.content;
+    for (final v in widget.p.variables) {
+      _ctrls[v] = TextEditingController();
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in _ctrls.values) { c.dispose(); }
+    super.dispose();
+  }
+
+  void _compile() {
+    String t = widget.p.content;
+    _ctrls.forEach((k, v) => t = t.replaceAll('{$k}', v.text.isEmpty ? '{$k}' : v.text));
+    setState(() { _result = t; _compiled = true; });
+    widget.onLog("Генерація: ${widget.p.title}");
+    FocusScope.of(context).unfocus();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasVars = _ctrls.isNotEmpty;
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF091630),
+      appBar: AppBar(
+        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('ГЕНЕРАТОР', style: TextStyle(fontSize: 14, letterSpacing: 1.5)),
+          Text(widget.p.title,
+              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+              overflow: TextOverflow.ellipsis),
+        ]),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (hasVars) ...[
+            const Text('ПАРАМЕТРИ',
+                style: TextStyle(
+                  fontSize: 10, letterSpacing: 1.5,
+                  color: AppColors.uaYellow,
+                )),
+            const SizedBox(height: 10),
+            ..._ctrls.keys.map((k) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: TextField(
+                controller: _ctrls[k],
+                style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+                decoration: InputDecoration(
+                  labelText: k,
+                  prefixText: '{  ',
+                  prefixStyle: const TextStyle(color: AppColors.textHint, fontFamily: 'monospace'),
+                ),
+              ),
+            )),
+            const SizedBox(height: 6),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.bolt, size: 17),
+              label: const Text('КОМПІЛЮВАТИ',
+                  style: TextStyle(letterSpacing: 1)),
+              onPressed: _compile,
+            ),
+            const SizedBox(height: 14),
+          ],
+          if (!hasVars || _compiled) ...[
+            Row(children: [
+              const Text('РЕЗУЛЬТАТ',
+                  style: TextStyle(
+                    fontSize: 10, letterSpacing: 1.5,
+                    color: AppColors.uaYellow,
+                  )),
+              const Spacer(),
+              if (_compiled)
+                const Icon(Icons.check_circle, color: AppColors.success, size: 14),
+            ]),
+            const SizedBox(height: 8),
+          ],
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: _compiled ? AppColors.success.withValues(alpha: 0.3) : AppColors.border,
+                ),
+              ),
+              child: SingleChildScrollView(
+                child: SelectableText(
+                  _result,
+                  style: const TextStyle(
+                    fontFamily: 'monospace', fontSize: 13,
+                    color: AppColors.textPrimary, height: 1.6,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.copy, size: 16, color: AppColors.textSecondary),
+                label: const Text('COPY',
+                    style: TextStyle(color: AppColors.textSecondary, letterSpacing: 0.8)),
+                style: OutlinedButton.styleFrom(
+                  side: const BorderSide(color: AppColors.border),
+                  minimumSize: const Size(0, 46),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: _result));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Скопійовано в буфер'),
+                    backgroundColor: AppColors.uaBlue,
+                    duration: Duration(seconds: 1),
+                  ));
+                },
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.share, size: 16),
+                label: const Text('SHARE', style: TextStyle(letterSpacing: 0.8)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.uaYellow,
+                  foregroundColor: Colors.black,
+                  minimumSize: const Size(0, 46),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () => Share.share(_result),
+              ),
+            ),
+          ]),
+        ]),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────
+// ГРА "KREMLIN COTTON" (пасхалка)
+// ─────────────────────────────────────────────
+class CottonGame extends StatefulWidget {
+  final Function(String) onLog;
+  const CottonGame({super.key, required this.onLog});
+  @override
+  State<CottonGame> createState() => _CottonGameState();
+}
+
+class _CottonGameState extends State<CottonGame> with SingleTickerProviderStateMixin {
+  double dX = 0.5, bX = -1, bY = -1;
+  List<double> targets = [0.1, 0.4, 0.7, 0.9];
+  int score = 0;
+  Timer? _gameTimer;
+  late AnimationController _fireCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _fireCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 1))
+        ..repeat(reverse: true);
+    _gameTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      if (!mounted) return;
+      setState(() {
+        for (int i = 0; i < targets.length; i++) {
+          targets[i] += 0.015;
+          if (targets[i] > 1.1) targets[i] = -0.1;
+        }
+        if (bY >= 0) {
+          bY += 0.04;
+          if (bY > 0.85) {
+            for (int i = 0; i < targets.length; i++) {
+              if ((bX - targets[i]).abs() < 0.1) {
+                score++;
+                targets[i] = -0.5;
+                widget.onLog("БАВОВНА! Ціль №$score ліквідована.");
+              }
+            }
+            bY = -1; bX = -1;
+          }
+        }
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _gameTimer?.cancel();
+    _fireCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+    final h = MediaQuery.of(context).size.height;
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: GestureDetector(
+        onTapDown: (d) {
+          final x = d.globalPosition.dx / w;
+          if (x < 0.3)      setState(() => dX = (dX - 0.1).clamp(0.05, 0.95));
+          else if (x > 0.7) setState(() => dX = (dX + 0.1).clamp(0.05, 0.95));
+          else if (bY < 0)  setState(() { bX = dX; bY = 0.15; });
+        },
+        child: Stack(children: [
+          // Фон — силует
+          Positioned(bottom: 0, left: 0, right: 0, height: 180,
+            child: Stack(children: [
+              Container(decoration: const BoxDecoration(
+                color: Color(0xFF0A152F),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+              )),
+              Positioned(bottom: 0, left: w * 0.4, width: w * 0.2, height: 160,
+                child: Column(children: [
+                  Container(width: w * 0.15, height: 100, color: AppColors.uaBlue),
+                  Container(width: 20, height: 20,
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle, color: AppColors.uaYellow,
+                      )),
+                ])),
+            ]),
+          ),
+          // Вогонь
+          AnimatedBuilder(
+            animation: _fireCtrl,
+            builder: (_, __) => Positioned(
+              bottom: 160, left: w * 0.45, width: w * 0.1, height: 30,
+              child: Container(decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: _fireCtrl.value * 0.8),
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [BoxShadow(color: Colors.orange, blurRadius: 20 * _fireCtrl.value)],
+              )),
+            ),
+          ),
+          // Цілі
+          ...targets.map((tx) => AnimatedPositioned(
+            duration: Duration.zero, bottom: 60, left: tx * w,
+            child: const Column(children: [
+              CircleAvatar(radius: 6, backgroundColor: Colors.grey),
+              Icon(Icons.person, color: Colors.white, size: 35),
+            ]),
+          )),
+          // Бомба
+          if (bY >= 0)
+            AnimatedPositioned(
+              duration: Duration.zero, top: bY * h, left: bX * w,
+              child: const Icon(Icons.wb_sunny, color: Colors.orange, size: 30),
+            ),
+          // Дрон
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 100),
+            top: 80, left: dX * w - 30,
+            child: const Icon(Icons.airplanemode_active, color: AppColors.accent, size: 60),
+          ),
+          // HUD
+          Positioned(
+            top: 40, left: 20,
+            child: Text(
+              'SCORE: $score\nSTATUS: HOT_ZONE',
+              style: const TextStyle(
+                color: AppColors.success, fontFamily: 'monospace',
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          // Вихід
+          Positioned(
+            bottom: 20, right: 20,
+            child: IconButton(
+              icon: const Icon(Icons.close, color: AppColors.textHint),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
