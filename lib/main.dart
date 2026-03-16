@@ -109,7 +109,7 @@ class PromptApp extends StatelessWidget {
             letterSpacing: 1.5,
           ),
         ),
-        tabBarTheme: const TabBarThemeData(
+        tabBarTheme: const TabBarTheme(
           labelColor: AppColors.uaYellow,
           unselectedLabelColor: AppColors.textSecondary,
           indicator: UnderlineTabIndicator(
@@ -142,7 +142,7 @@ class PromptApp extends StatelessWidget {
             minimumSize: const Size(double.infinity, 50),
           ),
         ),
-        dialogTheme: DialogThemeData(
+        dialogTheme: DialogTheme(
           backgroundColor: AppColors.bgCard,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -789,7 +789,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
       itemCount: docs.length,
       padding: const EdgeInsets.only(top: 8, bottom: 90),
       itemBuilder: (ctx, i) => Card(
-        color: Colors.white.withValues(alpha: 0.03),
+        color: Colors.white.withOpacity(0.03),
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
@@ -799,7 +799,7 @@ class _MainScreenState extends State<MainScreen> with SingleTickerProviderStateM
           leading: Container(
             width: 40, height: 40,
             decoration: BoxDecoration(
-              color: AppColors.uaBlue.withValues(alpha: 0.15),
+              color: AppColors.uaBlue.withOpacity(0.15),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Icon(Icons.picture_as_pdf, color: AppColors.accent, size: 22),
@@ -936,13 +936,13 @@ class _PromptCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      color: Colors.white.withValues(alpha: prompt.isFavorite ? 0.04 : 0.02),
+      color: Colors.white.withOpacity(prompt.isFavorite ? 0.04 : 0.02),
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
         side: BorderSide(
           color: prompt.isFavorite
-              ? AppColors.uaYellow.withValues(alpha: 0.3)
+              ? AppColors.uaYellow.withOpacity(0.3)
               : AppColors.border,
         ),
       ),
@@ -958,9 +958,9 @@ class _PromptCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                 decoration: BoxDecoration(
-                  color: AppColors.uaBlue.withValues(alpha: 0.2),
+                  color: AppColors.uaBlue.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: AppColors.uaBlue.withValues(alpha: 0.4)),
+                  border: Border.all(color: AppColors.uaBlue.withOpacity(0.4)),
                 ),
                 child: Text(prompt.category,
                     style: const TextStyle(
@@ -1002,7 +1002,7 @@ class _PromptCard extends StatelessWidget {
                 children: prompt.variables.take(4).map((v) => Container(
                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.05),
+                    color: Colors.white.withOpacity(0.05),
                     borderRadius: BorderRadius.circular(4),
                     border: Border.all(color: AppColors.border),
                   ),
@@ -1041,7 +1041,7 @@ class ToolsMenuScreen extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.only(top: 16, bottom: 90),
       children: tools.map((t) => Card(
-        color: Colors.white.withValues(alpha: 0.02),
+        color: Colors.white.withOpacity(0.02),
         margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(10),
@@ -1052,7 +1052,7 @@ class ToolsMenuScreen extends StatelessWidget {
           leading: Container(
             width: 44, height: 44,
             decoration: BoxDecoration(
-              color: AppColors.uaBlue.withValues(alpha: 0.15),
+              color: AppColors.uaBlue.withOpacity(0.15),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(t.icon, color: AppColors.uaYellow, size: 22),
@@ -1283,7 +1283,7 @@ class _ScanSection extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.02),
+        color: Colors.white.withOpacity(0.02),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppColors.border),
       ),
@@ -1295,7 +1295,7 @@ class _ScanSection extends StatelessWidget {
             Container(
               width: 32, height: 32,
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.15),
+                color: color.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(7),
               ),
               child: Icon(icon, color: color, size: 17),
@@ -1310,7 +1310,7 @@ class _ScanSection extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
+                color: color.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text('${items.length}',
@@ -1419,7 +1419,7 @@ class _ExifScreenState extends State<ExifScreen> {
                 : ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     children: _data.entries.map((e) => Card(
-                      color: Colors.white.withValues(alpha: 0.02),
+                      color: Colors.white.withOpacity(0.02),
                       margin: const EdgeInsets.only(bottom: 4),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -1581,7 +1581,7 @@ class _DorksScreenState extends State<DorksScreen> {
                         ]),
                       ),
                       Card(
-                        color: Colors.white.withValues(alpha: 0.02),
+                        color: Colors.white.withOpacity(0.02),
                         margin: const EdgeInsets.only(bottom: 4),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
@@ -1748,10 +1748,10 @@ class _GenScreenState extends State<GenScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.4),
+                color: Colors.black.withOpacity(0.4),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: _compiled ? AppColors.success.withValues(alpha: 0.3) : AppColors.border,
+                  color: _compiled ? AppColors.success.withOpacity(0.3) : AppColors.border,
                 ),
               ),
               child: SingleChildScrollView(
@@ -1899,7 +1899,7 @@ class _CottonGameState extends State<CottonGame> with SingleTickerProviderStateM
             builder: (_, __) => Positioned(
               bottom: 160, left: w * 0.45, width: w * 0.1, height: 30,
               child: Container(decoration: BoxDecoration(
-                color: Colors.orange.withValues(alpha: _fireCtrl.value * 0.8),
+                color: Colors.orange.withOpacity(_fireCtrl.value * 0.8),
                 borderRadius: BorderRadius.circular(10),
                 boxShadow: [BoxShadow(color: Colors.orange, blurRadius: 20 * _fireCtrl.value)],
               )),
