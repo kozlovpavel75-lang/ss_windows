@@ -1,0 +1,14 @@
+[
+  {
+    "file": "ukr.traineddata",
+    "language": "ukr"
+  },
+  {
+    "file": "rus.traineddata",
+    "language": "rus"
+  },
+  {
+    "file": "eng.traineddata",
+    "language": "eng"
+  }
+]
