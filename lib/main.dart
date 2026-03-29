@@ -17,6 +17,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'magneto_screen.dart';
 import 'dart:ui' as ui;
+import 'package:image/image.dart' as img;
 import 'db.dart';
 import 'migration.dart';
 import 'crypto.dart';
