@@ -1,0 +1,50 @@
+name: Build Windows EXE
+
+on:
+  workflow_dispatch:  # Тільки ручний запуск
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Flutter setup
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.2'
+          channel: 'stable'
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Create Flutter Windows project
+        shell: bash
+        run: |
+          mkdir temp
+          cp lib/main.dart temp/main.dart
+          cp pubspec.yaml temp/pubspec.yaml
+          flutter create --platforms windows --project-name ss .
+          cp temp/main.dart lib/main.dart
+          cp temp/pubspec.yaml pubspec.yaml
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Windows EXE
+        run: flutter build windows --release
+
+      - name: Zip release
+        shell: pwsh
+        run: |
+          $src = "build\windows\x64\runner\Release"
+          Compress-Archive -Path "$src\*" -DestinationPath "ss_windows.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ss-windows-release
+          path: ss_windows.zip
+          retention-days: 30
